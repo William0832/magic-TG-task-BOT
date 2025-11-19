@@ -14,51 +14,48 @@ class MissionBot {
   }
 
   setupHandlers() {
-    // Handle text messages in groups
-    this.bot.on('text', async (ctx) => {
-      // Only process messages in groups (group or supergroup)
-      if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') {
-        return;
-      }
-
-      const text = ctx.message.text;
-      
-      // Check if message contains Jira link
-      if (!text.includes('jira.dsteam.vip/browse/')) {
-        return;
-      }
-
-      const parsed = MessageParser.parseJiraMessage(text);
-
-      // Only process if we found a ticket ID and an assignee
-      if (parsed && parsed.ticketId && parsed.assigneeUsername) {
-        await this.handleTaskAssignment(ctx, parsed);
-      } else if (parsed && parsed.ticketId && !parsed.assigneeUsername) {
-        // Found Jira link but no assignee mentioned
-        await ctx.reply(`⚠️ 检测到工作单 ${parsed.ticketId}，但未找到负责人。请使用 @用户名 指定负责人，或使用命令：/assign ${parsed.ticketId} @username`);
-      }
-    });
-
+    // IMPORTANT: Register command handlers FIRST, before text handlers
+    // This ensures commands are processed before being caught by text handlers
+    
     // Command: /assign PROJ-4326 @username [title]
     this.bot.command('assign', async (ctx) => {
+      console.log('📝 收到 /assign 命令');
+      console.log('   完整命令:', ctx.message.text);
+      console.log('   发送者:', ctx.from.username || ctx.from.first_name, `(${ctx.from.id})`);
+      console.log('   聊天类型:', ctx.chat.type, ctx.chat.title || ctx.chat.first_name);
+      
       const args = ctx.message.text.split(' ').slice(1);
+      console.log('   解析参数:', args);
+      
       if (args.length < 2) {
+        console.log('   ❌ 参数不足');
         return ctx.reply('用法: /assign PROJ-4326 @username [标题]');
       }
 
       const ticketId = MessageParser.extractTicketId(args[0]);
+      console.log('   提取工作单号:', ticketId);
       if (!ticketId) {
+        console.log('   ❌ 无效的工作单号格式');
         return ctx.reply('无效的工作单号格式');
       }
 
       const assigneeMatch = args[1].match(/@?(\w+)/);
+      console.log('   匹配负责人:', assigneeMatch);
       if (!assigneeMatch) {
+        console.log('   ❌ 无效的用户名格式');
         return ctx.reply('无效的用户名格式');
       }
 
       const assigneeUsername = assigneeMatch[1];
       const title = args.slice(2).join(' ') || null;
       const jiraUrl = `https://jira.dsteam.vip/browse/${ticketId}`;
+
+      console.log('✅ 参数解析成功:', {
+        ticketId,
+        assigneeUsername,
+        title,
+        jiraUrl
+      });
 
       await this.createTask(ctx, {
         ticketId,
@@ -70,6 +67,7 @@ class MissionBot {
 
     // Command: /status PROJ-4326 开发中
     this.bot.command('status', async (ctx) => {
+      console.log('📝 收到 /status 命令');
       const args = ctx.message.text.split(' ').slice(1);
       if (args.length < 2) {
         return ctx.reply('用法: /status PROJ-4326 開發中');
@@ -97,6 +95,7 @@ class MissionBot {
 
     // Command: /progress PROJ-4326 80
     this.bot.command('progress', async (ctx) => {
+      console.log('📝 收到 /progress 命令');
       const args = ctx.message.text.split(' ').slice(1);
       if (args.length < 2) {
         return ctx.reply('用法: /progress PROJ-4326 80');
@@ -122,21 +121,67 @@ class MissionBot {
 
     // Command: /report - Generate weekly report
     // Can be used in private chat or group
-    // Usage: /report [my] - "my" to show only your tasks, otherwise show all tasks
     this.bot.command('report', async (ctx) => {
-      const args = ctx.message.text.split(' ').slice(1);
-      const showMyTasksOnly = args.length > 0 && args[0].toLowerCase() === 'my';
-      
-      // Get user info if showing personal tasks
-      // Note: We need username for database lookup, but if user doesn't have username,
-      // we'll need to use a different approach (like storing user_id in tasks)
-      const username = showMyTasksOnly ? ctx.from.username : null;
-      
-      if (showMyTasksOnly && !username) {
-        return ctx.reply('❌ 无法生成个人周报：您的账号没有设置 Telegram 用户名。\n请先在 Telegram 设置中设置用户名，或使用 /report 查看所有任务。');
+      console.log('📝 收到 /report 命令');
+      await this.generateWeeklyReport(ctx);
+    });
+
+    // Debug: Log all incoming messages (but skip commands as they're already logged)
+    this.bot.on('message', (ctx) => {
+      // Skip logging commands (they're already logged above)
+      if (ctx.message.text && ctx.message.text.startsWith('/')) {
+        return;
       }
       
-      await this.generateWeeklyReport(ctx, username);
+      const chatType = ctx.chat.type;
+      const chatTitle = ctx.chat.title || ctx.chat.first_name || 'Unknown';
+      const username = ctx.from.username || ctx.from.first_name || 'Unknown';
+      const userId = ctx.from.id;
+      const messageText = ctx.message.text || '[非文本消息]';
+      
+      console.log('📨 收到消息:', {
+        聊天类型: chatType,
+        聊天名称: chatTitle,
+        用户: `@${username} (${userId})`,
+        消息内容: messageText,
+        时间: new Date().toLocaleString('zh-TW')
+      });
+    });
+
+    // Handle text messages in groups (but exclude commands)
+    this.bot.on('text', async (ctx) => {
+      // Skip commands (they're handled by command handlers above)
+      if (ctx.message.text && ctx.message.text.startsWith('/')) {
+        return;
+      }
+      
+      // Only process messages in groups (group or supergroup)
+      if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') {
+        return;
+      }
+
+      const text = ctx.message.text;
+      
+      // Check if message contains Jira link
+      if (!text.includes('jira.dsteam.vip/browse/')) {
+        return;
+      }
+
+      const parsed = MessageParser.parseJiraMessage(text);
+      
+      console.log('🔍 解析 Jira 消息结果:', parsed);
+
+      // Only process if we found a ticket ID and an assignee
+      if (parsed && parsed.ticketId && parsed.assigneeUsername) {
+        console.log(`✅ 检测到工作分配: ${parsed.ticketId} -> @${parsed.assigneeUsername}`);
+        await this.handleTaskAssignment(ctx, parsed);
+      } else if (parsed && parsed.ticketId && !parsed.assigneeUsername) {
+        // Found Jira link but no assignee mentioned
+        console.log(`⚠️ 检测到工作单 ${parsed.ticketId}，但未找到负责人`);
+        await ctx.reply(`⚠️ 检测到工作单 ${parsed.ticketId}，但未找到负责人。请使用 @用户名 指定负责人，或使用命令：/assign ${parsed.ticketId} @username`);
+      } else {
+        console.log('ℹ️ 消息包含 Jira 链接但解析失败');
+      }
     });
 
     // Handle callback queries (for accept/reject buttons)
@@ -223,40 +268,55 @@ class MissionBot {
   async createTask(ctx, taskData) {
     const { ticketId, title, assigneeUsername, jiraUrl } = taskData;
 
+    console.log('🔄 开始创建任务:', { ticketId, title, assigneeUsername, jiraUrl });
+
     // Check if task already exists
     const existingTask = await this.db.getTaskByTicketId(ticketId);
     if (existingTask) {
+      console.log(`⚠️ 任务 ${ticketId} 已存在`);
       return ctx.reply(`⚠️ 任务 ${ticketId} 已存在`);
     }
 
     // Try to fetch title from Jira if not provided
     let finalTitle = title;
     if (!finalTitle && this.jiraService.enabled) {
+      console.log('   🔍 尝试从 Jira API 获取标题...');
       const jiraInfo = await this.jiraService.fetchTitleFromUrl(jiraUrl);
       if (jiraInfo) {
         finalTitle = jiraInfo.title;
+        console.log('   ✅ 从 Jira 获取到标题:', finalTitle);
+      } else {
+        console.log('   ℹ️ 无法从 Jira 获取标题');
       }
+    } else if (!finalTitle) {
+      console.log('   ℹ️ Jira API 未启用，使用提供的标题或留空');
     }
 
     // Find assignee user ID (try to get from chat if in group)
     let assigneeUserId = null;
     if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
+      console.log(`   🔍 尝试在群组中查找用户 @${assigneeUsername}...`);
       try {
         const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, `@${assigneeUsername}`);
         assigneeUserId = chatMember.user.id;
+        console.log(`   ✅ 找到用户 ID: ${assigneeUserId}`);
       } catch (error) {
-        console.log(`Could not find user @${assigneeUsername} in chat`);
+        console.log(`   ⚠️ 无法在群组中找到用户 @${assigneeUsername}:`, error.message);
       }
+    } else {
+      console.log('   ℹ️ 不在群组中，跳过用户 ID 查找');
     }
 
     try {
-      await this.db.createTask({
+      console.log('   💾 保存任务到数据库...');
+      const taskId = await this.db.createTask({
         ticketId,
         title: finalTitle,
         assigneeUsername,
         assigneeUserId,
         jiraUrl
       });
+      console.log(`   ✅ 任务已保存，数据库 ID: ${taskId}`);
 
       const message = `📋 新任务分配\n\n` +
         `工作单号: ${ticketId}\n` +
@@ -274,13 +334,17 @@ class MissionBot {
       };
 
       if (assigneeUserId) {
+        console.log(`   📤 发送确认消息给用户 ${assigneeUserId}...`);
         await ctx.telegram.sendMessage(assigneeUserId, message, { reply_markup: keyboard });
+        console.log('   ✅ 确认消息已发送');
         await ctx.reply(`✅ 任务 ${ticketId} 已分配给 @${assigneeUsername}，等待确认中...`);
       } else {
+        console.log('   📤 在群组中发送确认消息...');
         await ctx.reply(message, { reply_markup: keyboard });
       }
+      console.log('✅ 任务创建流程完成');
     } catch (error) {
-      console.error('Error creating task:', error);
+      console.error('❌ 创建任务失败:', error);
       await ctx.reply(`❌ 创建任务失败: ${error.message}`);
     }
   }
@@ -307,7 +371,7 @@ class MissionBot {
     }
   }
 
-  async generateWeeklyReport(ctx, username = null) {
+  async generateWeeklyReport(ctx) {
     try {
       const now = new Date();
       const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
@@ -328,36 +392,17 @@ class MissionBot {
         return `${year}.${month}.${day}`;
       };
 
-      // Get active tasks (filter by user if specified)
-      let activeTasks;
-      if (username) {
-        activeTasks = await this.db.getTasksByAssignee(username);
-        // Filter out completed tasks
-        activeTasks = activeTasks.filter(task => 
-          task.status !== '待上線' && task.status !== '已完成'
-        );
-      } else {
-        activeTasks = await this.db.getAllActiveTasks();
-      }
+      // Get all active tasks
+      const activeTasks = await this.db.getAllActiveTasks();
       
       // Get completed tasks this week
-      let completedTasks = await this.db.getTasksCompletedThisWeek(
+      const completedTasks = await this.db.getTasksCompletedThisWeek(
         weekStart.toISOString(),
         weekEnd.toISOString()
       );
-      
-      // Filter by user if specified
-      if (username) {
-        completedTasks = completedTasks.filter(task => 
-          task.assignee_username === username
-        );
-      }
 
       // Build report
-      const reportTitle = username 
-        ? `📊 個人週報 (@${username})\n\n` 
-        : `📊 週報\n\n`;
-      let report = reportTitle;
+      let report = `📊 週報\n\n`;
       report += `日期: ${formatDate(weekStart)} ~ ${formatDate(weekEnd)}\n\n`;
 
       // Current tasks
@@ -405,12 +450,19 @@ class MissionBot {
   }
 
   async launch() {
-    await this.bot.launch();
-    console.log('Bot is running...');
-    
-    // Graceful shutdown
-    process.once('SIGINT', () => this.bot.stop('SIGINT'));
-    process.once('SIGTERM', () => this.bot.stop('SIGTERM'));
+    try {
+      await this.bot.launch();
+      console.log('✅ Bot is running...');
+      console.log('📋 已注册的命令: /assign, /status, /progress, /report');
+      console.log('💡 提示: 在 Telegram 中发送命令测试，或查看控制台日志');
+      
+      // Graceful shutdown
+      process.once('SIGINT', () => this.bot.stop('SIGINT'));
+      process.once('SIGTERM', () => this.bot.stop('SIGTERM'));
+    } catch (error) {
+      console.error('❌ Bot 启动失败:', error);
+      throw error;
+    }
   }
 }
 

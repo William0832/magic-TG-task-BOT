@@ -25,7 +25,21 @@ class Database {
         if (err) {
           reject(err);
         } else {
-          this.db.run = promisify(this.db.run.bind(this.db));
+          // Store original run method
+          const originalRun = this.db.run.bind(this.db);
+          
+          // Custom run wrapper to preserve lastID
+          this.db.run = (sql, params = []) => {
+            return new Promise((resolve, reject) => {
+              originalRun(sql, params, function(err) {
+                if (err) {
+                  reject(err);
+                } else {
+                  resolve({ lastID: this.lastID, changes: this.changes });
+                }
+              });
+            });
+          };
           this.db.get = promisify(this.db.get.bind(this.db));
           this.db.all = promisify(this.db.all.bind(this.db));
           resolve();
