@@ -1,0 +1,29 @@
+{
+  "name": "tg-mission-bot",
+  "version": "1.0.0",
+  "description": "Telegram Bot for managing Jira tasks in work groups",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "jira",
+    "task-management"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "telegraf": "^4.15.0",
+    "sqlite3": "^5.1.6",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
+
