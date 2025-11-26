@@ -98,20 +98,18 @@ class MissionBot {
 /status <任務單號> <狀態>
   更新任務狀態
   可用狀態:
-  ${this.validStatuses.map((status, index) => `  ${index}: ${status}`).join('\n\t')}
-  範例: /status PROJ-1234 1 或 /status PROJ-1234 開發中
+  ${this.reportStatuses.map((status, index) => `  ${index}: ${status}`).join('\n\t')}
+  範例: /status PROJ-1234 1 或 /status PROJ-1234 已上線
 /progress <任務單號> <進度百分比數字>
   更新任務進度 (0-100 之間的數字)
   範例: /progress PROJ-1234 80
 /report
   生成本週工作報告（可在私聊、群組或頻道中使用）
-/reportstatus <任務單號> <週報狀態>
-  設定任務的週報狀態（0=正在進行, 1=已上線, 2=下週繼續）
-  範例: /reportstatus PROJ-1234 1 或 /reportstatus PROJ-1234 已上線
 /mytasks
-  查看本人負責的任務列表
+  查看本人負責的任務列表（不包含封存任務）
 💡 提示: 在群組中發送包含 Jira 連結的訊息，機器人會自動解析並分配任務
 💡 提示: 在頻道中發送 /report 命令可直接在頻道中生成週報帖子
+💡 提示: 封存的任務不會出現在週報和任務列表中
 `;
       
       const helpKeyboard = {
@@ -478,8 +476,8 @@ class MissionBot {
 /status <任務單號> <狀態>
   更新任務狀態
   可用狀態:
-  ${this.validStatuses.map((status, index) => `  ${index}: ${status}`).join('\n\t')}
-  範例: /status PROJ-1234 1 或 /status PROJ-1234 開發中
+  ${this.reportStatuses.map((status, index) => `  ${index}: ${status}`).join('\n\t')}
+  範例: /status PROJ-1234 1 或 /status PROJ-1234 已上線
 /progress <任務單號> <進度百分比數字>
   更新任務進度 (0-100 之間的數字)
   範例: /progress PROJ-1234 80
@@ -495,7 +493,7 @@ class MissionBot {
       } else if (action === 'status_quick') {
         await ctx.answerCbQuery('請先輸入任務單號，然後使用此狀態');
         const statusIndex = parseInt(rest[0]);
-        const status = this.validStatuses[statusIndex];
+        const status = this.reportStatuses[statusIndex];
         await ctx.reply(`請使用命令：/status <任務單號> ${statusIndex} 或 /status <任務單號> ${status}`);
       } else if (action === 'status_cancel') {
         await ctx.answerCbQuery('已取消');
@@ -807,6 +805,13 @@ class MissionBot {
       const completedTasks = await this.db.getTasksByReportStatus('已上線');
       const nextWeekTasks = await this.db.getTasksByReportStatus('下週繼續');
 
+      // 下週繼續處理包含：下週繼續 + 正在進行
+      const allNextWeekTasks = [...nextWeekTasks, ...ongoingTasks];
+      // 去重（基於 ticket_id）
+      const uniqueNextWeekTasks = Array.from(
+        new Map(allNextWeekTasks.map(task => [task.ticket_id, task])).values()
+      );
+
       // 構建報告
       let report = `📊 週報\n\n`;
       report += `日期: ${formatDate(weekStart)} ~ ${formatDate(weekEnd)}\n\n`;
@@ -838,12 +843,12 @@ class MissionBot {
 
       report += `\n`;
 
-      // 下週繼續處理
+      // 下週繼續處理（包含正在進行和下週繼續的任務）
       report += `- 下週繼續處理\n`;
-      if (nextWeekTasks.length === 0) {
+      if (uniqueNextWeekTasks.length === 0) {
         report += `  (無)\n`;
       } else {
-        nextWeekTasks.forEach((task, index) => {
+        uniqueNextWeekTasks.forEach((task, index) => {
           const title = task.title ? ` ${task.title}` : '';
           report += ` ${index + 1}. ${task.ticket_id}${title}\n`;
         });
@@ -952,11 +957,10 @@ class MissionBot {
       const commands = [
         { command: 'help', description: '顯示幫助資訊' },
         { command: 'assign', description: '分配任務給指定用戶' },
-        { command: 'status', description: '更新任務狀態 (可用: 0-4 或狀態文字)' },
+        { command: 'status', description: '更新任務狀態 (0=正在進行, 1=已上線, 2=下週繼續, 3=封存)' },
         { command: 'progress', description: '更新任務進度 (0-100)' },
         { command: 'report', description: '生成本週工作報告' },
-        { command: 'reportstatus', description: '設定任務週報狀態 (0=正在進行, 1=已上線, 2=下週繼續)' },
-        { command: 'mytasks', description: '查看本人負責的任務列表' }
+        { command: 'mytasks', description: '查看本人負責的任務列表（不包含封存）' }
       ];
       
       await this.bot.telegram.setMyCommands(commands);
