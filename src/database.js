@@ -107,9 +107,9 @@ class Database {
     const { ticketId, title, assigneeUsername, assigneeUserId, jiraUrl } = taskData;
     
     const result = await this.db.run(`
-      INSERT INTO tasks (ticket_id, title, assignee_username, assignee_user_id, status, report_status, jira_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [ticketId, title, assigneeUsername, assigneeUserId, '正在進行', '正在進行', jiraUrl]);
+      INSERT INTO tasks (ticket_id, title, assignee_username, assignee_user_id, status, report_status, progress, jira_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [ticketId, title, assigneeUsername, assigneeUserId, '正在進行', '正在進行', 0, jiraUrl]);
 
     // Record status history
     await this.db.run(`
