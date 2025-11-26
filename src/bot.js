@@ -64,17 +64,42 @@ class MissionBot {
   async launch() {
     try {
       // 設置機器人命令選單（選單按鈕）
+      // 注意：Telegram 限制命令描述最多 256 字符，每個命令描述最多 3-32 字符
       const commands = [
         { command: 'help', description: '顯示幫助資訊' },
         { command: 'assign', description: '分配任務給指定用戶' },
-        { command: 'status', description: '更新任務狀態 (0=正在進行, 1=下週處理, 2=已上線, 3=封存)' },
-        { command: 'progress', description: '更新任務進度 (0-100)' },
+        { command: 'status', description: '更新任務狀態' },
+        { command: 'progress', description: '更新任務進度' },
         { command: 'report', description: '生成本週工作報告' },
-        { command: 'mytasks', description: '查看本人負責的任務列表（不包含封存）' }
+        { command: 'mytasks', description: '查看我的任務列表' }
       ];
       
-      await this.bot.telegram.setMyCommands(commands);
-      console.log('✅ 選單按鈕已設置');
+      try {
+        // 設置默認作用域的命令（適用於所有聊天）
+        await this.bot.telegram.setMyCommands(commands);
+        console.log('✅ 選單按鈕已設置（默認作用域）');
+        
+        // 設置私聊的命令
+        await this.bot.telegram.setMyCommands(commands, {
+          scope: { type: 'all_private_chats' }
+        });
+        console.log('✅ 選單按鈕已設置（私聊）');
+        
+        // 設置群組的命令
+        await this.bot.telegram.setMyCommands(commands, {
+          scope: { type: 'all_group_chats' }
+        });
+        console.log('✅ 選單按鈕已設置（群組）');
+      } catch (error) {
+        // 如果設置失敗，至少嘗試設置默認命令
+        console.warn('⚠️ 設置選單按鈕時發生錯誤，嘗試設置默認命令:', error.message);
+        try {
+          await this.bot.telegram.setMyCommands(commands);
+          console.log('✅ 選單按鈕已設置（僅默認）');
+        } catch (fallbackError) {
+          console.error('❌ 無法設置選單按鈕:', fallbackError.message);
+        }
+      }
       
       await this.bot.launch();
       console.log('✅ Bot 正在運行...');
