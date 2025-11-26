@@ -1,68 +1,68 @@
-# 项目启动指南
+# 專案啟動指南
 
-## 快速开始
+## 快速開始
 
-### 1. 安装依赖
+### 1. 安裝依賴
 
-如果还没有安装依赖，运行：
+如果還沒有安裝依賴，執行：
 
 ```bash
 npm install
 ```
 
-### 2. 获取 Telegram Bot Token
+### 2. 獲取 Telegram Bot Token
 
-1. 打开 Telegram，搜索 `@BotFather`
-2. 发送 `/newbot` 命令
-3. 按照提示设置 Bot 名称和用户名
-4. BotFather 会返回一个 Token，格式类似：`123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
-5. **保存这个 Token，稍后会用到**
+1. 開啟 Telegram，搜尋 `@BotFather`
+2. 發送 `/newbot` 命令
+3. 按照提示設定 Bot 名稱和用戶名
+4. BotFather 會返回一個 Token，格式類似：`123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
+5. **儲存這個 Token，稍後會用到**
 
-### 3. 配置环境变量
+### 3. 設定環境變數
 
-创建 `.env` 文件（如果还没有）：
+創建 `.env` 檔案（如果還沒有）：
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 文件，填入你的 Bot Token：
+編輯 `.env` 檔案，填入你的 Bot Token：
 
 ```env
 # Telegram Bot Token（必需）
-BOT_TOKEN=你的_bot_token_这里
+BOT_TOKEN=你的_bot_token_這裡
 
-# Jira Configuration（可选，如果需要自动获取任务标题）
+# Jira Configuration（可選，如果需要自動獲取任務標題）
 JIRA_BASE_URL=https://jira.dsteam.vip
-JIRA_USERNAME=你的_jira_用户名
+JIRA_USERNAME=你的_jira_用戶名
 JIRA_API_TOKEN=你的_jira_api_token
 
-# Database（可选，默认使用 ./data/missions.db）
+# Database（可選，預設使用 ./data/missions.db）
 DB_PATH=./data/missions.db
 ```
 
-**最小配置**：只需要设置 `BOT_TOKEN` 即可运行。
+**最小設定**：只需要設定 `BOT_TOKEN` 即可執行。
 
-**Jira API 配置**（可选）：
-- 如果需要 Bot 自动从 Jira 获取任务标题，需要配置 Jira API
-- 获取 API Token：https://id.atlassian.com/manage-profile/security/api-tokens
-- 如果不配置，Bot 会尝试从消息中提取标题，如果没有则标题为空
+**Jira API 設定**（可選）：
+- 如果需要 Bot 自動從 Jira 獲取任務標題，需要設定 Jira API
+- 獲取 API Token：https://id.atlassian.com/manage-profile/security/api-tokens
+- 如果不設定，Bot 會嘗試從訊息中提取標題，如果沒有則標題為空
 
-### 4. 启动 Bot
+### 4. 啟動 Bot
 
 ```bash
 npm start
 ```
 
-或者使用开发模式（自动重启）：
+或者使用開發模式（自動重啟）：
 
 ```bash
 npm run dev
 ```
 
-### 5. 验证 Bot 运行
+### 5. 驗證 Bot 執行
 
-启动成功后，你会看到：
+啟動成功後，你會看到：
 
 ```
 Initializing database...
@@ -72,80 +72,80 @@ Starting bot...
 Bot is running...
 ```
 
-### 6. 测试 Bot
+### 6. 測試 Bot
 
-1. 在 Telegram 中找到你的 Bot（使用 BotFather 给你的用户名）
-2. 发送 `/start` 测试 Bot 是否响应
-3. 将 Bot 添加到你的工作群组
-4. 在群组中发送包含 Jira 链接的消息测试
+1. 在 Telegram 中找到你的 Bot（使用 BotFather 給你的用戶名）
+2. 發送 `/start` 測試 Bot 是否響應
+3. 將 Bot 新增到你的工作群組
+4. 在群組中發送包含 Jira 連結的訊息測試
 
-## 使用示例
+## 使用範例
 
-### 在群组中自动检测工作分配
+### 在群組中自動檢測工作分配
 
-发送消息：
+發送訊息：
 ```
-https://jira.dsteam.vip/browse/PROJ-4326
-[H5] 发现中心优化-新增返回&活动未读&任务未完成等
+https://jira.dsteam.vip/browse/PROJ-1234
+[H5] 發現中心優化-新增返回&活動未讀&任務未完成等
 @william0875566 麻煩你了
 ```
 
-Bot 会自动：
-- 识别工作单号 `PROJ-4326`
-- 提取标题
-- 识别负责人 `william0875566`
-- 发送确认消息给负责人
+Bot 會自動：
+- 識別工作單號 `PROJ-1234`
+- 提取標題
+- 識別負責人 `william0875566`
+- 發送確認訊息給負責人
 
-### 手动分配任务
-
-```
-/assign PROJ-4326 @william0875566 [H5] 发现中心优化
-```
-
-### 更新任务状态
+### 手動分配任務
 
 ```
-/status PROJ-4326 開發中
+/assign PROJ-1234 @william0875566 [單號名稱]
 ```
 
-### 更新任务进度
+### 更新任務狀態
 
 ```
-/progress PROJ-4326 80
+/status PROJ-1234 1
 ```
 
-### 生成周报
+### 更新任務進度
 
-在私聊中发送：
 ```
-/report        # 查看所有任务
-/report my    # 查看个人任务
+/progress PROJ-1234 80
 ```
 
-## 常见问题
+### 生成週報
 
-### Bot 没有响应？
+在私聊中發送：
+```
+/report        # 查看所有任務
+/report my    # 查看個人任務
+```
 
-1. 检查 `.env` 文件中的 `BOT_TOKEN` 是否正确
-2. 检查 Bot 是否已启动（查看终端输出）
-3. 确保 Bot 已添加到群组并有发送消息权限
+## 常見問題
 
-### 数据库文件在哪里？
+### Bot 沒有響應？
 
-数据库文件会自动创建在 `./data/missions.db`
+1. 檢查 `.env` 檔案中的 `BOT_TOKEN` 是否正確
+2. 檢查 Bot 是否已啟動（查看終端輸出）
+3. 確保 Bot 已新增到群組並有發送訊息權限
 
-### 如何重置数据库？
+### 資料庫檔案在哪裡？
 
-删除 `./data/missions.db` 文件，重启 Bot 会自动创建新的数据库
+資料庫檔案會自動創建在 `./data/missions.db`
 
-### Jira API 配置失败？
+### 如何重置資料庫？
 
-如果不配置 Jira API，Bot 仍然可以正常工作，只是无法自动获取任务标题。标题会从消息中提取，如果没有则留空。
+刪除 `./data/missions.db` 檔案，重啟 Bot 會自動創建新的資料庫
+
+### Jira API 設定失敗？
+
+如果不設定 Jira API，Bot 仍然可以正常運作，只是無法自動獲取任務標題。標題會從訊息中提取，如果沒有則留空。
 
 ## 下一步
 
-- 将 Bot 添加到工作群组
-- 测试工作分配功能
-- 配置 Jira API（可选）
-- 开始使用任务管理功能
+- 將 Bot 新增到工作群組
+- 測試工作分配功能
+- 設定 Jira API（可選）
+- 開始使用任務管理功能
 

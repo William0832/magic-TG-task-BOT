@@ -1,6 +1,6 @@
 class MessageParser {
   static parseJiraMessage(text) {
-    // Pattern to match Jira URL: https://jira.dsteam.vip/browse/PROJ-4326
+    // Pattern to match Jira URL: https://jira.dsteam.vip/browse/xxxx
     // Supports both http and https, case-insensitive
     const jiraUrlPattern = /https?:\/\/jira\.dsteam\.vip\/browse\/([A-Z]+-\d+)/gi;
     const urlMatches = [...text.matchAll(jiraUrlPattern)];

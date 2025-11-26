@@ -12,33 +12,33 @@ const JIRA_USERNAME = process.env.JIRA_USERNAME;
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
 
 if (!BOT_TOKEN) {
-  console.error('Error: BOT_TOKEN is required in .env file');
+  console.error('錯誤: .env 檔案中需要 BOT_TOKEN');
   process.exit(1);
 }
 
 async function main() {
   try {
-    // Initialize database
-    console.log('Initializing database...');
+    // 初始化資料庫
+    console.log('正在初始化資料庫...');
     const db = new Database(DB_PATH);
     await db.connect();
     await db.init();
-    console.log('Database initialized');
+    console.log('資料庫已初始化');
 
-    // Initialize Jira service
+    // 初始化 Jira 服務
     const jiraService = new JiraService(JIRA_BASE_URL, JIRA_USERNAME, JIRA_API_TOKEN);
     if (jiraService.enabled) {
-      console.log('Jira API integration enabled');
+      console.log('Jira API 整合已啟用');
     } else {
-      console.log('Jira API integration disabled (no credentials provided)');
+      console.log('Jira API 整合已停用（未提供憑證）');
     }
 
-    // Initialize and launch bot
-    console.log('Starting bot...');
+    // 初始化並啟動 Bot
+    console.log('正在啟動 Bot...');
     const bot = new MissionBot(BOT_TOKEN, db, jiraService);
     await bot.launch();
   } catch (error) {
-    console.error('Fatal error:', error);
+    console.error('嚴重錯誤:', error);
     process.exit(1);
   }
 }

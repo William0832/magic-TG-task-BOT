@@ -2,40 +2,40 @@
 
 Telegram Bot for managing Jira tasks in work groups.
 
-## Features
+## 功能
 
-- 自动检测群组中的 Jira 工作分配消息
-- 任务状态管理（待开发/开发中/待测试/测试中/待上線）
-- 进度追踪（手动输入百分比）
-- 周报生成
+- 自動檢測群組中的 Jira 工作分配訊息
+- 任務狀態管理（待開發/開發中/待測試/測試中/待上線）
+- 進度追蹤（手動輸入百分比）
+- 週報生成
 
-## Setup
+## 安裝設定
 
-1. Install dependencies:
+1. 安裝依賴：
 ```bash
 npm install
 ```
 
-2. Copy `.env.example` to `.env` and fill in your bot token:
+2. 複製 `.env.example` 到 `.env` 並填入你的 bot token：
 ```bash
 cp .env.example .env
 ```
 
-3. Start the bot:
+3. 啟動 Bot：
 ```bash
 npm start
 ```
 
-## Commands
+## 命令
 
-- `/assign PROJ-4326 @username [标题]` - 手动分配任务
-- `/status PROJ-4326 开发中` - 更新任务状态
-- `/progress PROJ-4326 80` - 更新任务进度（0-100）
-- `/report` - 生成本周工作报告（显示所有任务）
+- `/assign PROJ-1234 @username [標題]` - 手動分配任務
+- `/status PROJ-1234 開發中` - 更新任務狀態
+- `/progress PROJ-1234 80` - 更新任務進度（0-100）
+- `/report` - 生成本週工作報告（顯示所有任務）
 
-**注意**：`/report` 命令可以在群组和私聊中使用。
+**注意**：`/report` 命令可以在群組和私聊中使用。
 
-## Database
+## 資料庫
 
-SQLite database will be created automatically at `./data/missions.db`
+SQLite 資料庫會自動創建在 `./data/missions.db`
 

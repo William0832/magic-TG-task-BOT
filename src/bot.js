@@ -8,24 +8,24 @@ class MissionBot {
     this.bot = new Telegraf(token);
     this.db = db;
     this.jiraService = jiraService;
-    this.validStatuses = ['待開發', '開發中', '待測試', '測試中', '待上線'];
-    // 狀態數字對應：0-4 對應狀態文字
-    this.statusNumberMap = {
-      '0': '待開發',
-      '1': '開發中',
-      '2': '待測試',
-      '3': '測試中',
-      '4': '待上線'
+    // 週報狀態選項（主要狀態系統）
+    this.reportStatuses = ['正在進行', '已上線', '下週繼續', '封存'];
+    // 週報狀態數字對應：0-3 對應週報狀態文字
+    this.reportStatusNumberMap = {
+      '0': '正在進行',
+      '1': '已上線',
+      '2': '下週繼續',
+      '3': '封存'
     };
     
     this.setupHandlers();
   }
 
-  // 將狀態輸入（數字或文字）轉換為狀態文字
+  // 將狀態輸入（數字或文字）轉換為週報狀態文字
   parseStatusInput(input) {
-    // 檢查輸入是否為數字 (0-4)
-    if (/^[0-4]$/.test(input.trim())) {
-      return this.statusNumberMap[input.trim()];
+    // 檢查輸入是否為數字 (0-3)
+    if (/^[0-3]$/.test(input.trim())) {
+      return this.reportStatusNumberMap[input.trim()];
     }
     // 否則，直接返回輸入（應該是狀態文字）
     return input;
@@ -99,22 +99,41 @@ class MissionBot {
   更新任務狀態
   可用狀態:
   ${this.validStatuses.map((status, index) => `  ${index}: ${status}`).join('\n\t')}
-  範例: /status PROJ-1234 1 或 /status PROJ-4326 開發中
+  範例: /status PROJ-1234 1 或 /status PROJ-1234 開發中
 /progress <任務單號> <進度百分比數字>
   更新任務進度 (0-100 之間的數字)
   範例: /progress PROJ-1234 80
 /report
   生成本週工作報告（可在私聊、群組或頻道中使用）
-/post <頻道ID或頻道用戶名>
-  發送週報到指定頻道
-  範例: /post @my_channel 或 /post -1001234567890
+/reportstatus <任務單號> <週報狀態>
+  設定任務的週報狀態（0=正在進行, 1=已上線, 2=下週繼續）
+  範例: /reportstatus PROJ-1234 1 或 /reportstatus PROJ-1234 已上線
+/mytasks
+  查看本人負責的任務列表
 💡 提示: 在群組中發送包含 Jira 連結的訊息，機器人會自動解析並分配任務
 💡 提示: 在頻道中發送 /report 命令可直接在頻道中生成週報帖子
 `;
-      await ctx.reply(helpMessage);
+      
+      const helpKeyboard = {
+        inline_keyboard: [
+          [
+            { text: '📋 分配任務', switch_inline_query_current_chat: '/assign ' },
+            { text: '📊 更新狀態', switch_inline_query_current_chat: '/status ' }
+          ],
+          [
+            { text: '📈 更新進度', switch_inline_query_current_chat: '/progress ' },
+            { text: '📑 生成週報', switch_inline_query_current_chat: '/report' }
+          ],
+          [
+            { text: '📋 我的任務', switch_inline_query_current_chat: '/mytasks' }
+          ]
+        ]
+      };
+      
+      await ctx.reply(helpMessage, { reply_markup: helpKeyboard });
     });
     
-    // 命令：/assign PROJ-4326 @username [title]
+    // 命令：/assign 
     this.bot.command('assign', async (ctx) => {
       const args = ctx.message.text.split(' ').slice(1);
       this.logCommandDetails('assign', ctx, {
@@ -123,23 +142,60 @@ class MissionBot {
       
       if (args.length < 2) {
         console.log('   ❌ 參數不足');
-        return ctx.reply('用法: /assign PROJ-4326 @username [標題]');
+        
+        const assignKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '❓ 查看幫助', callback_data: 'help_assign' },
+              { text: '📋 範例', switch_inline_query_current_chat: '/assign PROJ-1234 @username 任務標題' }
+            ]
+          ]
+        };
+        
+        return ctx.reply('用法: /assign <任務單號> @username [標題]\n或: /assign @username <任務單號> [標題]', {
+          reply_markup: assignKeyboard
+        });
       }
 
-      const ticketId = MessageParser.extractTicketId(args[0]);
+      // 智能識別參數順序：支援兩種格式
+      // 格式1: /assign PROJ-1234 @username [標題]
+      // 格式2: /assign @username PROJ-1234 [標題]
+      let ticketId = null;
+      let assigneeUsername = null;
+      let title = null;
+
+      // 檢查第一個參數是否是 @username
+      const firstArgIsUsername = args[0] && args[0].startsWith('@');
+      
+      if (firstArgIsUsername) {
+        // 格式2: /assign @username PROJ-1234 [標題]
+        const assigneeMatch = args[0].match(/@?(\w+)/);
+        if (assigneeMatch) {
+          assigneeUsername = assigneeMatch[1];
+        }
+        ticketId = MessageParser.extractTicketId(args[1]);
+        title = args.slice(2).join(' ') || null;
+      } else {
+        // 格式1: /assign PROJ-1234 @username [標題]
+        ticketId = MessageParser.extractTicketId(args[0]);
+        const assigneeMatch = args[1].match(/@?(\w+)/);
+        if (assigneeMatch) {
+          assigneeUsername = assigneeMatch[1];
+        }
+        title = args.slice(2).join(' ') || null;
+      }
+
+      // 驗證必要參數
       if (!ticketId) {
         console.log('   ❌ 無效的工作單號格式');
-        return ctx.reply('無效的工作單號格式');
+        return ctx.reply('❌ 無效的工作單號格式\n\n💡 提示：工作單號格式應為 PROJ-1234');
       }
 
-      const assigneeMatch = args[1].match(/@?(\w+)/);
-      if (!assigneeMatch) {
+      if (!assigneeUsername) {
         console.log('   ❌ 無效的用戶名格式');
-        return ctx.reply('無效的用戶名格式');
+        return ctx.reply('❌ 無效的用戶名格式\n\n💡 提示：請使用 @username 格式');
       }
 
-      const assigneeUsername = assigneeMatch[1];
-      const title = args.slice(2).join(' ') || null;
       const jiraUrl = `https://jira.dsteam.vip/browse/${ticketId}`;
 
       console.log('✅ 參數解析成功:', {
@@ -157,7 +213,6 @@ class MissionBot {
       });
     });
 
-    // 命令：/status PROJ-4326 開發中 或 /status PROJ-4326 1
     this.bot.command('status', async (ctx) => {
       const args = ctx.message.text.split(' ').slice(1);
       this.logCommandDetails('status', ctx, {
@@ -165,10 +220,28 @@ class MissionBot {
       });
 
       if (args.length < 2) {
-        const statusList = this.validStatuses.map((status, index) => 
+        const statusList = this.reportStatuses.map((status, index) => 
           `${index}: ${status}`
         ).join('\n');
-        return ctx.reply(`用法: /status PROJ-4326 <狀態>\n\n可用狀態:\n${statusList}`);
+        
+        // 創建狀態選擇按鈕
+        const statusButtons = this.reportStatuses.map((status, index) => ({
+          text: `${index}: ${status}`,
+          callback_data: `status_quick:${index}`
+        }));
+        
+        const statusKeyboard = {
+          inline_keyboard: [
+            statusButtons,
+            [
+              { text: '❌ 取消', callback_data: 'status_cancel' }
+            ]
+          ]
+        };
+        
+        return ctx.reply(`用法: /status <任務單號> <狀態>\n\n可用狀態:\n${statusList}`, {
+          reply_markup: statusKeyboard
+        });
       }
 
       const ticketId = MessageParser.extractTicketId(args[0]);
@@ -177,14 +250,14 @@ class MissionBot {
         return ctx.reply('無效的工作單號格式');
       }
 
-      // 解析狀態輸入（可以是數字 0-4 或狀態文字）
+      // 解析狀態輸入（可以是數字 0-3 或狀態文字）
       const statusInput = args.slice(1).join(' ');
       const newStatus = this.parseStatusInput(statusInput);
       
       console.log(`   狀態輸入: "${statusInput}" -> 解析為: "${newStatus}"`);
       
-      if (!this.validStatuses.includes(newStatus)) {
-        const statusList = this.validStatuses.map((status, index) => 
+      if (!this.reportStatuses.includes(newStatus)) {
+        const statusList = this.reportStatuses.map((status, index) => 
           `${index}: ${status}`
         ).join('\n');
         console.log('   ❌ 無效的狀態');
@@ -195,16 +268,44 @@ class MissionBot {
         const userId = ctx.from.id;
         const username = ctx.from.username || ctx.from.first_name;
         console.log(`   正在更新任務 ${ticketId} 狀態為: ${newStatus}`);
-        await this.db.updateTaskStatus(ticketId, newStatus, userId, username);
+        await this.db.updateReportStatus(ticketId, newStatus);
         console.log(`   ✅ 狀態更新成功`);
-        await ctx.reply(`✅ 任務 ${ticketId} 狀態已更新為: ${newStatus}`);
+        
+        // 新增操作按鈕
+        const successKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '📈 更新進度', switch_inline_query_current_chat: `/progress ${ticketId} ` },
+              { text: '📊 查看狀態', switch_inline_query_current_chat: `/status ${ticketId} ` }
+            ],
+            [
+              { text: '📋 生成週報', switch_inline_query_current_chat: '/report' }
+            ]
+          ]
+        };
+        
+        await ctx.reply(`✅ 任務 ${ticketId} 狀態已更新為: ${newStatus}`, {
+          reply_markup: successKeyboard
+        });
       } catch (error) {
         console.error(`   ❌ 更新失敗:`, error.message);
-        await ctx.reply(`❌ 更新失敗: ${error.message}`);
+        
+        // 新增錯誤處理按鈕
+        const errorKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '🔄 重試', switch_inline_query_current_chat: ctx.message.text },
+              { text: '❓ 查看幫助', callback_data: 'help_error' }
+            ]
+          ]
+        };
+        
+        await ctx.reply(`❌ 更新失敗: ${error.message}`, {
+          reply_markup: errorKeyboard
+        });
       }
     });
 
-    // 命令：/progress PROJ-4326 80
     this.bot.command('progress', async (ctx) => {
       const args = ctx.message.text.split(' ').slice(1);
       this.logCommandDetails('progress', ctx, {
@@ -213,7 +314,7 @@ class MissionBot {
 
       if (args.length < 2) {
         console.log('   ❌ 參數不足');
-        return ctx.reply('用法: /progress PROJ-4326 80');
+        return ctx.reply('用法: /progress <任務單號> <百分比數字>');
       }
 
       const ticketId = MessageParser.extractTicketId(args[0]);
@@ -234,10 +335,39 @@ class MissionBot {
         console.log(`   正在更新任務 ${ticketId} 進度為: ${progress}%`);
         await this.db.updateTaskProgress(ticketId, progress);
         console.log(`   ✅ 進度更新成功`);
-        await ctx.reply(`✅ 任務 ${ticketId} 進度已更新為: ${progress}%`);
+        
+        // 新增操作按鈕
+        const successKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '📊 更新狀態', switch_inline_query_current_chat: `/status ${ticketId} ` },
+              { text: '📈 繼續更新', switch_inline_query_current_chat: `/progress ${ticketId} ` }
+            ],
+            [
+              { text: '📋 生成週報', switch_inline_query_current_chat: '/report' }
+            ]
+          ]
+        };
+        
+        await ctx.reply(`✅ 任務 ${ticketId} 進度已更新為: ${progress}%`, {
+          reply_markup: successKeyboard
+        });
       } catch (error) {
         console.error(`   ❌ 更新失敗:`, error.message);
-        await ctx.reply(`❌ 更新失敗: ${error.message}`);
+        
+        // 新增錯誤處理按鈕
+        const errorKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '🔄 重試', switch_inline_query_current_chat: ctx.message.text },
+              { text: '❓ 查看幫助', callback_data: 'help_error' }
+            ]
+          ]
+        };
+        
+        await ctx.reply(`❌ 更新失敗: ${error.message}`, {
+          reply_markup: errorKeyboard
+        });
       }
     });
 
@@ -251,34 +381,11 @@ class MissionBot {
       await this.generateWeeklyReport(ctx);
     });
 
-    // 命令：/post <頻道ID或頻道用戶名> - 發送週報到指定頻道
-    // 例如：/post @my_channel 或 /post -1001234567890
-    this.bot.command('post', async (ctx) => {
-      const args = ctx.message.text.split(' ').slice(1);
-      this.logCommandDetails('post', ctx, {
-        原始參數: args,
-        目標頻道: args[0] || '未指定'
-      });
-      
-      if (args.length < 1) {
-        console.log('   ❌ 參數不足');
-        return ctx.reply('用法: /post <頻道ID或頻道用戶名>\n範例: /post @my_channel 或 /post -1001234567890');
-      }
 
-      const channelId = args[0];
-      console.log(`   目標頻道: ${channelId}`);
-      
-      try {
-        console.log(`   📤 正在生成週報並發送到頻道 ${channelId}...`);
-        await ctx.reply(`📤 正在生成週報並發送到頻道 ${channelId}...`);
-        await this.sendWeeklyReportToChannel(channelId);
-        console.log(`   ✅ 週報已成功發送到頻道 ${channelId}`);
-        await ctx.reply(`✅ 週報已成功發送到頻道 ${channelId}`);
-      } catch (error) {
-        console.error(`   ❌ 發送失敗:`, error.message);
-        console.error(`   錯誤詳情:`, error.response || error);
-        await ctx.reply(`❌ 發送失敗: ${error.message}\n\n提示：確保機器人已加入頻道並有發送訊息的權限`);
-      }
+    // 命令：/mytasks - 查看本人負責的任務列表
+    this.bot.command('mytasks', async (ctx) => {
+      this.logCommandDetails('mytasks', ctx);
+      await this.showMyTasks(ctx);
     });
 
     // 除錯：記錄所有收到的訊息（但跳過命令，因為已經記錄過了）
@@ -333,22 +440,69 @@ class MissionBot {
       } else if (parsed && parsed.ticketId && !parsed.assigneeUsername) {
         // 找到 Jira 連結但未提及負責人
         console.log(`⚠️ 檢測到工作單 ${parsed.ticketId}，但未找到負責人`);
-        await ctx.reply(`⚠️ 檢測到工作單 ${parsed.ticketId}，但未找到負責人。請使用 @用戶名 指定負責人，或使用命令：/assign ${parsed.ticketId} @username`);
+        
+        const assignKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '📝 分配任務', switch_inline_query_current_chat: `/assign ${parsed.ticketId} @` }
+            ],
+            [
+              { text: '❓ 查看幫助', callback_data: 'help_assign' }
+            ]
+          ]
+        };
+        
+        await ctx.reply(`⚠️ 檢測到工作單 ${parsed.ticketId}，但未找到負責人。請使用 @用戶名 指定負責人，或使用命令：/assign ${parsed.ticketId} @username`, {
+          reply_markup: assignKeyboard
+        });
       } else {
         console.log('ℹ️ 訊息包含 Jira 連結但解析失敗');
       }
     });
 
-    // 處理回調查詢（用於接受/拒絕按鈕）
+    // 處理回調查詢（用於接受/拒絕按鈕和其他按鈕）
     this.bot.on('callback_query', async (ctx) => {
       const data = ctx.callbackQuery.data;
-      const [action, ticketId] = data.split(':');
+      const [action, ...rest] = data.split(':');
 
       if (action === 'accept') {
-        await this.handleTaskAcceptance(ctx, ticketId);
+        await this.handleTaskAcceptance(ctx, rest[0]);
       } else if (action === 'reject') {
-        await ctx.answerCbQuery('任務已拒絕');
-        await ctx.editMessageText('❌ 任務已被拒絕');
+        await this.handleTaskRejection(ctx, rest[0]);
+      } else if (action === 'help_error' || action === 'help_assign') {
+        await ctx.answerCbQuery('顯示幫助資訊');
+        const helpMessage = `📋 可用命令列表：
+/assign <任務單號> @username [標題]
+  分配任務給指定用戶
+  範例: /assign PROJ-1234 @john 修復登入問題
+/status <任務單號> <狀態>
+  更新任務狀態
+  可用狀態:
+  ${this.validStatuses.map((status, index) => `  ${index}: ${status}`).join('\n\t')}
+  範例: /status PROJ-1234 1 或 /status PROJ-1234 開發中
+/progress <任務單號> <進度百分比數字>
+  更新任務進度 (0-100 之間的數字)
+  範例: /progress PROJ-1234 80
+/report
+  生成本週工作報告（可在私聊、群組或頻道中使用）
+/mytasks
+  查看本人負責的任務列表（不包含封存任務）
+💡 提示: 在群組中發送包含 Jira 連結的訊息，機器人會自動解析並分配任務
+💡 提示: 在頻道中發送 /report 命令可直接在頻道中生成週報帖子
+💡 提示: 封存的任務不會出現在週報和任務列表中
+`;
+        await ctx.reply(helpMessage);
+      } else if (action === 'status_quick') {
+        await ctx.answerCbQuery('請先輸入任務單號，然後使用此狀態');
+        const statusIndex = parseInt(rest[0]);
+        const status = this.validStatuses[statusIndex];
+        await ctx.reply(`請使用命令：/status <任務單號> ${statusIndex} 或 /status <任務單號> ${status}`);
+      } else if (action === 'status_cancel') {
+        await ctx.answerCbQuery('已取消');
+        await ctx.deleteMessage();
+      } else if (action === 'refresh_mytasks') {
+        await ctx.answerCbQuery('正在重新整理...');
+        await this.showMyTasks(ctx);
       }
     });
 
@@ -540,22 +694,89 @@ class MissionBot {
 
   async handleTaskAcceptance(ctx, ticketId) {
     try {
+      const userId = ctx.from.id;
+      const username = ctx.from.username || ctx.from.first_name;
+      
       const task = await this.db.getTaskByTicketId(ticketId);
       if (!task) {
         return ctx.answerCbQuery('任務不存在');
       }
 
-      if (task.status !== '待開發') {
+      if (task.report_status !== '正在進行') {
         return ctx.answerCbQuery('任務狀態已變更');
       }
 
+      // 檢查權限：只有任務負責人或管理員可以點擊
+      const isAssignee = 
+        (task.assignee_user_id && task.assignee_user_id === userId) ||
+        (task.assignee_username && task.assignee_username === username);
+      
+      let isAdmin = false;
+      
+      // 如果在群組中，檢查是否為管理員
+      if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
+        try {
+          const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, userId);
+          isAdmin = ['creator', 'administrator'].includes(chatMember.status);
+        } catch (error) {
+          console.log(`   無法檢查管理員權限: ${error.message}`);
+        }
+      }
+
+      if (!isAssignee && !isAdmin) {
+        console.log(`   ❌ 權限不足：用戶 ${username} (${userId}) 嘗試接受任務 ${ticketId}`);
+        return ctx.answerCbQuery('❌ 只有任務負責人或管理員可以接受此任務', { show_alert: true });
+      }
+
+      console.log(`   ✅ 權限驗證通過：用戶 ${username} (${userId}) 接受任務 ${ticketId}`);
       await ctx.answerCbQuery('任務已受理');
-      await ctx.editMessageText('✅ 任務已受理，狀態: 待開發');
+      await ctx.editMessageText('✅ 任務已受理，狀態: 正在進行');
       
       // 注意：任務已經處於「待開發」狀態，無需再次更新
       // 受理只是確認分配
     } catch (error) {
       console.error('處理受理時發生錯誤:', error);
+      await ctx.answerCbQuery('處理失敗');
+    }
+  }
+
+  async handleTaskRejection(ctx, ticketId) {
+    try {
+      const userId = ctx.from.id;
+      const username = ctx.from.username || ctx.from.first_name;
+      
+      const task = await this.db.getTaskByTicketId(ticketId);
+      if (!task) {
+        return ctx.answerCbQuery('任務不存在');
+      }
+
+      // 檢查權限：只有任務負責人或管理員可以點擊
+      const isAssignee = 
+        (task.assignee_user_id && task.assignee_user_id === userId) ||
+        (task.assignee_username && task.assignee_username === username);
+      
+      let isAdmin = false;
+      
+      // 如果在群組中，檢查是否為管理員
+      if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
+        try {
+          const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, userId);
+          isAdmin = ['creator', 'administrator'].includes(chatMember.status);
+        } catch (error) {
+          console.log(`   無法檢查管理員權限: ${error.message}`);
+        }
+      }
+
+      if (!isAssignee && !isAdmin) {
+        console.log(`   ❌ 權限不足：用戶 ${username} (${userId}) 嘗試拒絕任務 ${ticketId}`);
+        return ctx.answerCbQuery('❌ 只有任務負責人或管理員可以拒絕此任務', { show_alert: true });
+      }
+
+      console.log(`   ✅ 權限驗證通過：用戶 ${username} (${userId}) 拒絕任務 ${ticketId}`);
+      await ctx.answerCbQuery('任務已拒絕');
+      await ctx.editMessageText('❌ 任務已被拒絕');
+    } catch (error) {
+      console.error('處理拒絕時發生錯誤:', error);
       await ctx.answerCbQuery('處理失敗');
     }
   }
@@ -581,34 +802,31 @@ class MissionBot {
         return `${year}.${month}.${day}`;
       };
 
-      // 獲取所有進行中的任務
-      const activeTasks = await this.db.getAllActiveTasks();
-      
-      // 獲取本週完成的任務
-      const completedTasks = await this.db.getTasksCompletedThisWeek(
-        weekStart.toISOString(),
-        weekEnd.toISOString()
-      );
+      // 根據週報狀態獲取任務
+      const ongoingTasks = await this.db.getTasksByReportStatus('正在進行');
+      const completedTasks = await this.db.getTasksByReportStatus('已上線');
+      const nextWeekTasks = await this.db.getTasksByReportStatus('下週繼續');
 
       // 構建報告
       let report = `📊 週報\n\n`;
       report += `日期: ${formatDate(weekStart)} ~ ${formatDate(weekEnd)}\n\n`;
 
-      // 目前工作
-      report += `- 目前工作\n`;
-      if (activeTasks.length === 0) {
+      // 正在進行
+      report += `- 正在進行\n`;
+      if (ongoingTasks.length === 0) {
         report += `  (無)\n`;
       } else {
-        activeTasks.forEach((task, index) => {
+        ongoingTasks.forEach((task, index) => {
           const title = task.title ? ` ${task.title}` : '';
-          report += ` ${index + 1}. ${task.ticket_id}${title} - ${task.progress}%\n`;
+          const progress = task.progress > 0 ? ` - ${task.progress}%` : '';
+          report += ` ${index + 1}. ${task.ticket_id}${title}${progress}\n`;
         });
       }
 
       report += `\n`;
 
-      // 本週進度
-      report += `- 本週進度(本週結單or上線的內容)\n`;
+      // 已上線（本週進度）
+      report += `- 已上線（本週結單or上線的內容）\n`;
       if (completedTasks.length === 0) {
         report += `  (無)\n`;
       } else {
@@ -620,12 +838,12 @@ class MissionBot {
 
       report += `\n`;
 
-      // 下週預計任務（目前與進行中的任務相同）
-      report += `- 下週預計任務\n`;
-      if (activeTasks.length === 0) {
+      // 下週繼續處理
+      report += `- 下週繼續處理\n`;
+      if (nextWeekTasks.length === 0) {
         report += `  (無)\n`;
       } else {
-        activeTasks.forEach((task, index) => {
+        nextWeekTasks.forEach((task, index) => {
           const title = task.title ? ` ${task.title}` : '';
           report += ` ${index + 1}. ${task.ticket_id}${title}\n`;
         });
@@ -648,83 +866,83 @@ class MissionBot {
     }
   }
 
-  // 發送訊息到頻道
-  async sendToChannel(channelId, message, options = {}) {
+  async showMyTasks(ctx) {
     try {
-      const result = await this.bot.telegram.sendMessage(channelId, message, options);
-      console.log(`✅ 已發送訊息到頻道 ${channelId}`);
-      return result;
-    } catch (error) {
-      console.error(`❌ 發送訊息到頻道失敗 (${channelId}):`, error);
-      throw error;
-    }
-  }
-
-  // 生成並發送週報到頻道
-  async sendWeeklyReportToChannel(channelId) {
-    try {
-      const now = new Date();
-      const dayOfWeek = now.getDay();
+      const userId = ctx.from.id;
+      const username = ctx.from.username || ctx.from.first_name;
       
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-      weekStart.setHours(0, 0, 0, 0);
+      console.log(`   正在查詢用戶 ${username} (${userId}) 的任務...`);
       
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
+      // 獲取用戶的任務列表
+      const tasks = await this.db.getMyTasks(userId, username);
+      
+      if (tasks.length === 0) {
+        const emptyKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '📋 分配任務', switch_inline_query_current_chat: '/assign ' },
+              { text: '❓ 查看幫助', callback_data: 'help_assign' }
+            ]
+          ]
+        };
+        
+        await ctx.reply(`📋 您目前沒有任何負責的任務\n\n💡 提示：使用 /assign 命令分配任務，或在群組中發送包含 Jira 連結的訊息`, {
+          reply_markup: emptyKeyboard
+        });
+        return;
+      }
 
-      const formatDate = (date) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}.${month}.${day}`;
+      // 按週報狀態分組任務（排除封存）
+      const tasksByStatus = {};
+      tasks.forEach(task => {
+        const status = task.report_status || task.status || '正在進行';
+        if (status !== '封存') {
+          if (!tasksByStatus[status]) {
+            tasksByStatus[status] = [];
+          }
+          tasksByStatus[status].push(task);
+        }
+      });
+
+      // 構建任務列表訊息
+      let message = `📋 您負責的任務列表\n\n`;
+      message += `總共 ${tasks.length} 個任務（不包含封存）\n\n`;
+
+      // 按照週報狀態順序顯示（排除封存）
+      this.reportStatuses.filter(s => s !== '封存').forEach(status => {
+        if (tasksByStatus[status] && tasksByStatus[status].length > 0) {
+          message += `📌 ${status} (${tasksByStatus[status].length} 個)\n`;
+          tasksByStatus[status].forEach((task, index) => {
+            const title = task.title ? ` - ${task.title}` : '';
+            const progress = task.progress > 0 ? ` (${task.progress}%)` : '';
+            message += `  ${index + 1}. ${task.ticket_id}${title}${progress}\n`;
+          });
+          message += `\n`;
+        }
+      });
+
+      // 添加操作按鈕
+      const keyboard = {
+        inline_keyboard: [
+          [
+            { text: '📊 更新狀態', switch_inline_query_current_chat: '/status ' },
+            { text: '📈 更新進度', switch_inline_query_current_chat: '/progress ' }
+          ],
+          [
+            { text: '📑 生成週報', switch_inline_query_current_chat: '/report' },
+            { text: '🔄 重新整理', callback_data: 'refresh_mytasks' }
+          ]
+        ]
       };
 
-      const activeTasks = await this.db.getAllActiveTasks();
-      const completedTasks = await this.db.getTasksCompletedThisWeek(
-        weekStart.toISOString(),
-        weekEnd.toISOString()
-      );
-
-      let report = `📊 週報\n\n`;
-      report += `日期: ${formatDate(weekStart)} ~ ${formatDate(weekEnd)}\n\n`;
-
-      report += `- 目前工作\n`;
-      if (activeTasks.length === 0) {
-        report += `  (無)\n`;
-      } else {
-        activeTasks.forEach((task, index) => {
-          const title = task.title ? ` ${task.title}` : '';
-          report += ` ${index + 1}. ${task.ticket_id}${title} - ${task.progress}%\n`;
-        });
-      }
-
-      report += `\n- 本週進度(本週結單or上線的內容)\n`;
-      if (completedTasks.length === 0) {
-        report += `  (無)\n`;
-      } else {
-        completedTasks.forEach((task, index) => {
-          const title = task.title ? ` ${task.title}` : '';
-          report += ` ${index + 1}. ${task.ticket_id}${title}\n`;
-        });
-      }
-
-      report += `\n- 下週預計任務\n`;
-      if (activeTasks.length === 0) {
-        report += `  (無)\n`;
-      } else {
-        activeTasks.forEach((task, index) => {
-          const title = task.title ? ` ${task.title}` : '';
-          report += ` ${index + 1}. ${task.ticket_id}${title}\n`;
-        });
-      }
-
-      await this.sendToChannel(channelId, report);
-      return report;
+      console.log(`   ✅ 找到 ${tasks.length} 個任務`);
+      await ctx.reply(message, {
+        reply_markup: keyboard,
+        parse_mode: 'HTML'
+      });
     } catch (error) {
-      console.error('生成並發送週報到頻道時發生錯誤:', error);
-      throw error;
+      console.error('查詢任務列表時發生錯誤:', error);
+      await ctx.reply(`❌ 查詢失敗: ${error.message}`);
     }
   }
 
@@ -737,7 +955,8 @@ class MissionBot {
         { command: 'status', description: '更新任務狀態 (可用: 0-4 或狀態文字)' },
         { command: 'progress', description: '更新任務進度 (0-100)' },
         { command: 'report', description: '生成本週工作報告' },
-        { command: 'post', description: '發送週報到指定頻道' }
+        { command: 'reportstatus', description: '設定任務週報狀態 (0=正在進行, 1=已上線, 2=下週繼續)' },
+        { command: 'mytasks', description: '查看本人負責的任務列表' }
       ];
       
       await this.bot.telegram.setMyCommands(commands);
@@ -745,8 +964,9 @@ class MissionBot {
       
       await this.bot.launch();
       console.log('✅ Bot 正在運行...');
-      console.log('📋 已註冊的命令: /help, /assign, /status, /progress, /report, /post');
+      console.log('📋 已註冊的命令: /help, /assign, /status, /progress, /report, /mytasks');
       console.log('💡 提示: 在 Telegram 中發送命令測試，或查看控制台日誌');
+      console.log('💡 提示: 任務狀態系統已改為週報狀態（正在進行、已上線、下週繼續、封存）');
       console.log('💡 提示: 點擊輸入框旁邊的選單按鈕可查看所有命令');
       console.log('💡 提示: 頻道帖子功能已啟用，可在頻道中使用 /report 命令');
       
