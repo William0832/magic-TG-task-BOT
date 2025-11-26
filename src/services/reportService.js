@@ -27,9 +27,9 @@ export class ReportService {
       // 根據週報狀態獲取任務
       const ongoingTasks = await this.db.getTasksByReportStatus('正在進行');
       const completedTasks = await this.db.getTasksByReportStatus('已上線');
-      const nextWeekTasks = await this.db.getTasksByReportStatus('下週繼續');
+      const nextWeekTasks = await this.db.getTasksByReportStatus('下週處理');
 
-      // 下週繼續處理包含：下週繼續 + 正在進行
+      // 下週處理包含：下週處理 + 正在進行
       const allNextWeekTasks = [...nextWeekTasks, ...ongoingTasks];
       // 去重（基於 ticket_id）
       const uniqueNextWeekTasks = Array.from(
@@ -67,8 +67,8 @@ export class ReportService {
 
       report += `\n`;
 
-      // 下週繼續處理（包含正在進行和下週繼續的任務）
-      report += `- 下週繼續處理\n`;
+      // 下週處理（包含正在進行和下週處理的任務）
+      report += `- 下週處理\n`;
       if (uniqueNextWeekTasks.length === 0) {
         report += `  (無)\n`;
       } else {

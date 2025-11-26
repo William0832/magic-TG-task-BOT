@@ -1,6 +1,6 @@
 import MessageParser from '../messageParser.js';
 
-export function setupMessageHandler(bot, taskService) {
+export function setupMessageHandler(bot, taskService, assignService) {
   // 除錯：記錄所有收到的訊息（但跳過命令，因為已經記錄過了）
   bot.on('message', (ctx) => {
     // 跳過記錄命令（上面已經記錄過了）
@@ -30,12 +30,20 @@ export function setupMessageHandler(bot, taskService) {
       return;
     }
     
+    const text = ctx.message.text;
+
+    // 優先檢查是否有待處理的分配任務（可以在任何聊天類型中處理）
+    if (assignService) {
+      const handled = await assignService.handleAssignInput(ctx, text);
+      if (handled) {
+        return; // 已處理分配任務
+      }
+    }
+    
     // 只處理群組中的訊息（group 或 supergroup）
     if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') {
       return;
     }
-
-    const text = ctx.message.text;
     
     // 檢查訊息是否包含 Jira 連結
     if (!text.includes('jira.dsteam.vip/browse/')) {
@@ -57,7 +65,7 @@ export function setupMessageHandler(bot, taskService) {
       const assignKeyboard = {
         inline_keyboard: [
           [
-            { text: '📝 分配任務', switch_inline_query_current_chat: `/assign ${parsed.ticketId} @` }
+            { text: '👥 選擇用戶', callback_data: 'assign_select_user' }
           ],
           [
             { text: '❓ 查看幫助', callback_data: 'help_assign' }
@@ -65,7 +73,7 @@ export function setupMessageHandler(bot, taskService) {
         ]
       };
       
-      await ctx.reply(`⚠️ 檢測到工作單 ${parsed.ticketId}，但未找到負責人。請使用 @用戶名 指定負責人，或使用命令：/assign ${parsed.ticketId} @username`, {
+      await ctx.reply(`⚠️ 檢測到工作單 ${parsed.ticketId}，但未找到負責人。請選擇用戶或使用命令：/assign ${parsed.ticketId} @username`, {
         reply_markup: assignKeyboard
       });
     } else {

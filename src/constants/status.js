@@ -1,11 +1,11 @@
 // 週報狀態選項（主要狀態系統）
-export const REPORT_STATUSES = ['正在進行', '已上線', '下週繼續', '封存'];
+export const REPORT_STATUSES = ['正在進行', '下週處理', '已上線', '封存'];
 
 // 週報狀態數字對應：0-3 對應週報狀態文字
 export const REPORT_STATUS_NUMBER_MAP = {
   '0': '正在進行',
-  '1': '已上線',
-  '2': '下週繼續',
+  '1': '下週處理',
+  '2': '已上線',
   '3': '封存'
 };
 

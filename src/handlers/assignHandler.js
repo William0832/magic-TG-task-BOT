@@ -9,20 +9,28 @@ export function setupAssignHandler(bot, taskService) {
     });
     
     if (args.length < 2) {
-      console.log('   ❌ 參數不足');
+      console.log('   ℹ️ 顯示選擇用戶選項');
       
-      const assignKeyboard = {
-        inline_keyboard: [
-          [
-            { text: '❓ 查看幫助', callback_data: 'help_assign' },
-            { text: '📋 範例', switch_inline_query_current_chat: '/assign PROJ-1234 @username 任務標題' }
+      // 檢查是否在群組中
+      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+        const assignKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '👥 選擇用戶', callback_data: 'assign_select_user' }
+            ],
+            [
+              { text: '❓ 查看幫助', callback_data: 'help_assign' }
+            ]
           ]
-        ]
-      };
-      
-      return ctx.reply('用法: /assign <任務單號> @username [標題]\n或: /assign @username <任務單號> [標題]', {
-        reply_markup: assignKeyboard
-      });
+        };
+        
+        return ctx.reply('📋 分配任務\n\n請選擇要分配任務的用戶：', {
+          reply_markup: assignKeyboard
+        });
+      } else {
+        // 私聊中，提示需要在群組中使用
+        return ctx.reply('⚠️ 此功能需要在群組中使用\n\n💡 提示：請在群組中發送 /assign 命令，或直接使用：\n/assign <任務單號> @username [標題]');
+      }
     }
 
     // 智能識別參數順序：支援兩種格式

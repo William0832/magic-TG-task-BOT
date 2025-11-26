@@ -12,7 +12,7 @@ export function setupHelpHandler(bot) {
   更新任務狀態
   可用狀態:
   ${REPORT_STATUSES.map((status, index) => `  ${index}: ${status}`).join('\n\t')}
-  範例: /status PROJ-1234 1 或 /status PROJ-1234 已上線
+  範例: /status PROJ-1234 1 或 /status PROJ-1234 下週處理
 /progress <任務單號> <進度百分比數字>
   更新任務進度 (0-100 之間的數字)
   範例: /progress PROJ-1234 80
