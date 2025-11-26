@@ -2,7 +2,7 @@ import MessageParser from '../messageParser.js';
 import { REPORT_STATUSES, parseStatusInput } from '../constants/status.js';
 import { logCommandDetails } from '../utils/logger.js';
 
-export function setupStatusHandler(bot, db) {
+export function setupStatusHandler(bot, db, taskCallbacks) {
   bot.command('status', async (ctx) => {
     const args = ctx.message.text.split(' ').slice(1);
     logCommandDetails('status', ctx, {
@@ -10,27 +10,9 @@ export function setupStatusHandler(bot, db) {
     });
 
     if (args.length < 2) {
-      const statusList = REPORT_STATUSES.map((status, index) => 
-        `${index}: ${status}`
-      ).join('\n');
-      
-      const statusButtons = REPORT_STATUSES.map((status, index) => ({
-        text: `${index}: ${status}`,
-        callback_data: `status_quick:${index}`
-      }));
-      
-      const statusKeyboard = {
-        inline_keyboard: [
-          statusButtons,
-          [
-            { text: '❌ 取消', callback_data: 'status_cancel' }
-          ]
-        ]
-      };
-      
-      return ctx.reply(`用法: /status <任務單號> <狀態>\n\n可用狀態:\n${statusList}`, {
-        reply_markup: statusKeyboard
-      });
+      // 如果沒有參數，顯示用戶的任務列表（排除封存）
+      await taskCallbacks.showTaskListForStatus(ctx);
+      return;
     }
 
     const ticketId = MessageParser.extractTicketId(args[0]);

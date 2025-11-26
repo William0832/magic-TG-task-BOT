@@ -20,6 +20,8 @@ export function setupHelpHandler(bot) {
   生成本週工作報告（可在私聊、群組或頻道中使用）
 /mytasks
   查看本人負責的任務列表（不包含封存任務）
+/archived
+  查看本人封存的任務列表
 💡 提示: 在群組中發送包含 Jira 連結的訊息，機器人會自動解析並分配任務
 💡 提示: 在頻道中發送 /report 命令可直接在頻道中生成週報帖子
 💡 提示: 封存的任務不會出現在週報和任務列表中
@@ -36,7 +38,8 @@ export function setupHelpHandler(bot) {
           { text: '📑 生成週報', switch_inline_query_current_chat: '/report' }
         ],
         [
-          { text: '📋 我的任務', switch_inline_query_current_chat: '/mytasks' }
+          { text: '📋 我的任務', switch_inline_query_current_chat: '/mytasks' },
+          { text: '🗄️ 封存任務', switch_inline_query_current_chat: '/archived' }
         ]
       ]
     };

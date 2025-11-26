@@ -59,6 +59,13 @@ export class TaskCallbacks {
         const page = parseInt(rest[0]) || 0;
         await ctx.answerCbQuery(`載入第 ${page + 1} 頁...`);
         await this.myTasksService.refreshMyTasksMessage(ctx, page);
+      } else if (action === 'refresh_archived') {
+        await ctx.answerCbQuery('正在重新整理...');
+        await this.refreshArchivedTasksMessage(ctx, 0);
+      } else if (action === 'archived_page') {
+        const page = parseInt(rest[0]) || 0;
+        await ctx.answerCbQuery(`載入第 ${page + 1} 頁...`);
+        await this.refreshArchivedTasksMessage(ctx, page);
       } else if (action === 'task_detail') {
         await this.showTaskDetail(ctx, rest[0]);
       } else if (action === 'task_back') {
@@ -82,6 +89,13 @@ export class TaskCallbacks {
           this.assignService.clearAssignState(ctx.from.id, ctx.chat.id);
         }
         await ctx.deleteMessage();
+      } else if (action === 'status_select_task') {
+        // 選擇任務後顯示狀態選擇菜單
+        await this.showStatusMenu(ctx, rest[0]);
+      } else if (action === 'status_task_page') {
+        const page = parseInt(rest[0]) || 0;
+        await ctx.answerCbQuery(`載入第 ${page + 1} 頁...`);
+        await this.showTaskListForStatusPage(ctx, page);
       }
     });
   }
@@ -470,6 +484,362 @@ export class TaskCallbacks {
     } catch (error) {
       console.error('更新進度時發生錯誤:', error);
       await ctx.answerCbQuery('更新失敗');
+    }
+  }
+
+  async showTaskListForStatus(ctx) {
+    try {
+      const userId = ctx.from.id;
+      const username = ctx.from.username || ctx.from.first_name;
+      
+      // 獲取用戶的任務列表（排除封存）
+      const tasks = await this.db.getMyTasks(userId, username);
+      
+      if (tasks.length === 0) {
+        const statusList = REPORT_STATUSES.map((status, index) => 
+          `${index}: ${status}`
+        ).join('\n');
+        
+        const statusButtons = REPORT_STATUSES.map((status, index) => ({
+          text: `${index}: ${status}`,
+          callback_data: `status_quick:${index}`
+        }));
+        
+        const statusKeyboard = {
+          inline_keyboard: [
+            statusButtons,
+            [
+              { text: '❌ 取消', callback_data: 'status_cancel' }
+            ]
+          ]
+        };
+        
+        return ctx.reply(`📋 您目前沒有任何任務\n\n用法: /status <任務單號> <狀態>\n\n可用狀態:\n${statusList}`, {
+          reply_markup: statusKeyboard
+        });
+      }
+
+      // 每頁顯示5個任務
+      const tasksPerPage = 5;
+      const totalPages = Math.ceil(tasks.length / tasksPerPage);
+      const currentPage = 0;
+      const startIndex = currentPage * tasksPerPage;
+      const endIndex = Math.min(startIndex + tasksPerPage, tasks.length);
+      const currentTasks = tasks.slice(startIndex, endIndex);
+
+      // 構建任務列表訊息
+      let message = `📊 選擇要更新狀態的任務\n\n`;
+      message += `找到 ${tasks.length} 個任務（不包含封存）\n`;
+      message += `\n頁面 ${currentPage + 1}/${totalPages}\n`;
+      message += `點擊下方按鈕選擇任務\n\n`;
+
+      // 構建按鈕鍵盤 - 每個任務一行
+      const keyboardRows = [];
+      currentTasks.forEach((task) => {
+        const status = task.report_status || task.status || '正在進行';
+        const title = task.title ? task.title.substring(0, 15) : '';
+        const progress = task.progress > 0 ? ` [${task.progress}%]` : '';
+        const buttonText = `${task.ticket_id}${title ? ` - ${title}` : ''} (${status})${progress}`;
+        
+        keyboardRows.push([{
+          text: buttonText.length > 64 ? buttonText.substring(0, 61) + '...' : buttonText,
+          callback_data: `status_select_task:${task.ticket_id}`
+        }]);
+      });
+
+      // 添加分頁按鈕（如果需要）
+      const paginationButtons = [];
+      if (totalPages > 1) {
+        if (currentPage < totalPages - 1) {
+          paginationButtons.push({ text: '下一頁 ➡️', callback_data: `status_task_page:${currentPage + 1}` });
+        }
+        if (paginationButtons.length > 0) {
+          keyboardRows.push(paginationButtons);
+        }
+      }
+
+      // 添加取消按鈕
+      keyboardRows.push([
+        { text: '❌ 取消', callback_data: 'status_cancel' }
+      ]);
+
+      const keyboard = {
+        inline_keyboard: keyboardRows
+      };
+
+      await ctx.reply(message, {
+        reply_markup: keyboard,
+        parse_mode: 'HTML'
+      });
+    } catch (error) {
+      console.error('顯示任務列表時發生錯誤:', error);
+      await ctx.reply(`❌ 查詢失敗: ${error.message}`);
+    }
+  }
+
+  async showTaskListForStatusPage(ctx, page = 0) {
+    try {
+      const userId = ctx.from.id;
+      const username = ctx.from.username || ctx.from.first_name;
+      
+      // 獲取用戶的任務列表（排除封存）
+      const tasks = await this.db.getMyTasks(userId, username);
+      
+      if (tasks.length === 0) {
+        return ctx.editMessageText('📋 您目前沒有任何任務');
+      }
+
+      // 每頁顯示5個任務
+      const tasksPerPage = 5;
+      const totalPages = Math.ceil(tasks.length / tasksPerPage);
+      const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+      const startIndex = currentPage * tasksPerPage;
+      const endIndex = Math.min(startIndex + tasksPerPage, tasks.length);
+      const currentTasks = tasks.slice(startIndex, endIndex);
+
+      // 構建任務列表訊息
+      let message = `📊 選擇要更新狀態的任務\n\n`;
+      message += `找到 ${tasks.length} 個任務（不包含封存）\n`;
+      message += `\n頁面 ${currentPage + 1}/${totalPages}\n`;
+      message += `點擊下方按鈕選擇任務\n\n`;
+
+      // 構建按鈕鍵盤 - 每個任務一行
+      const keyboardRows = [];
+      currentTasks.forEach((task) => {
+        const status = task.report_status || task.status || '正在進行';
+        const title = task.title ? task.title.substring(0, 15) : '';
+        const progress = task.progress > 0 ? ` [${task.progress}%]` : '';
+        const buttonText = `${task.ticket_id}${title ? ` - ${title}` : ''} (${status})${progress}`;
+        
+        keyboardRows.push([{
+          text: buttonText.length > 64 ? buttonText.substring(0, 61) + '...' : buttonText,
+          callback_data: `status_select_task:${task.ticket_id}`
+        }]);
+      });
+
+      // 添加分頁按鈕
+      const paginationButtons = [];
+      if (totalPages > 1) {
+        if (currentPage > 0) {
+          paginationButtons.push({ text: '⬅️ 上一頁', callback_data: `status_task_page:${currentPage - 1}` });
+        }
+        if (currentPage < totalPages - 1) {
+          paginationButtons.push({ text: '下一頁 ➡️', callback_data: `status_task_page:${currentPage + 1}` });
+        }
+        if (paginationButtons.length > 0) {
+          keyboardRows.push(paginationButtons);
+        }
+      }
+
+      // 添加取消按鈕
+      keyboardRows.push([
+        { text: '❌ 取消', callback_data: 'status_cancel' }
+      ]);
+
+      const keyboard = {
+        inline_keyboard: keyboardRows
+      };
+
+      await ctx.editMessageText(message, {
+        reply_markup: keyboard,
+        parse_mode: 'HTML'
+      });
+    } catch (error) {
+      console.error('顯示任務列表時發生錯誤:', error);
+      // 如果是"消息未修改"錯誤，忽略它
+      if (error.response && error.response.description && error.response.description.includes('message is not modified')) {
+        await ctx.answerCbQuery('內容未變更');
+      } else {
+        await ctx.answerCbQuery('載入失敗');
+      }
+    }
+  }
+
+  async showArchivedTasks(ctx, page = 0) {
+    try {
+      const userId = ctx.from.id;
+      const username = ctx.from.username || ctx.from.first_name;
+      
+      // 獲取封存任務
+      const archivedTasks = await this.db.getTasksByReportStatus('封存');
+      
+      // 過濾出當前用戶的封存任務
+      const userArchivedTasks = archivedTasks.filter(task => 
+        (task.assignee_user_id && task.assignee_user_id === userId) ||
+        (task.assignee_username && task.assignee_username === username)
+      );
+      
+      if (userArchivedTasks.length === 0) {
+        const emptyKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '📋 我的任務', switch_inline_query_current_chat: '/mytasks' },
+              { text: '❓ 查看幫助', callback_data: 'help_assign' }
+            ]
+          ]
+        };
+        
+        await ctx.reply(`📋 您目前沒有任何封存的任務\n\n💡 提示：封存的任務不會出現在任務列表和週報中`, {
+          reply_markup: emptyKeyboard
+        });
+        return;
+      }
+
+      // 每頁顯示5個任務
+      const tasksPerPage = 5;
+      const totalPages = Math.ceil(userArchivedTasks.length / tasksPerPage);
+      const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+      const startIndex = currentPage * tasksPerPage;
+      const endIndex = Math.min(startIndex + tasksPerPage, userArchivedTasks.length);
+      const currentTasks = userArchivedTasks.slice(startIndex, endIndex);
+
+      // 構建任務列表訊息
+      let message = `📋 您封存的任務列表\n\n`;
+      message += `總共 ${userArchivedTasks.length} 個封存任務\n`;
+      message += `\n頁面 ${currentPage + 1}/${totalPages}\n`;
+      message += `點擊下方按鈕查看任務詳情\n\n`;
+
+      // 構建按鈕鍵盤 - 每個任務一行
+      const keyboardRows = [];
+      currentTasks.forEach((task) => {
+        const title = task.title ? task.title.substring(0, 20) : '';
+        const progress = task.progress > 0 ? ` [${task.progress}%]` : '';
+        const buttonText = `${task.ticket_id}${title ? ` - ${title}` : ''}${progress}`;
+        
+        keyboardRows.push([{
+          text: buttonText.length > 64 ? buttonText.substring(0, 61) + '...' : buttonText,
+          callback_data: `task_detail:${task.ticket_id}`
+        }]);
+      });
+
+      // 添加分頁按鈕
+      const paginationButtons = [];
+      if (totalPages > 1) {
+        if (currentPage > 0) {
+          paginationButtons.push({ text: '⬅️ 上一頁', callback_data: `archived_page:${currentPage - 1}` });
+        }
+        if (currentPage < totalPages - 1) {
+          paginationButtons.push({ text: '下一頁 ➡️', callback_data: `archived_page:${currentPage + 1}` });
+        }
+        if (paginationButtons.length > 0) {
+          keyboardRows.push(paginationButtons);
+        }
+      }
+
+      // 添加底部操作按鈕
+      keyboardRows.push([
+        { text: '🔄 重新整理', callback_data: 'refresh_archived' },
+        { text: '📋 我的任務', switch_inline_query_current_chat: '/mytasks' }
+      ]);
+
+      const keyboard = {
+        inline_keyboard: keyboardRows
+      };
+
+      console.log(`   ✅ 找到 ${userArchivedTasks.length} 個封存任務，顯示第 ${currentPage + 1} 頁（${currentTasks.length} 個任務）`);
+      await ctx.reply(message, {
+        reply_markup: keyboard,
+        parse_mode: 'HTML'
+      });
+    } catch (error) {
+      console.error('顯示封存任務列表時發生錯誤:', error);
+      await ctx.reply(`❌ 查詢失敗: ${error.message}`);
+    }
+  }
+
+  async refreshArchivedTasksMessage(ctx, page = 0) {
+    try {
+      const userId = ctx.from.id;
+      const username = ctx.from.username || ctx.from.first_name;
+      
+      // 獲取封存任務
+      const archivedTasks = await this.db.getTasksByReportStatus('封存');
+      
+      // 過濾出當前用戶的封存任務
+      const userArchivedTasks = archivedTasks.filter(task => 
+        (task.assignee_user_id && task.assignee_user_id === userId) ||
+        (task.assignee_username && task.assignee_username === username)
+      );
+      
+      if (userArchivedTasks.length === 0) {
+        const emptyKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '📋 我的任務', switch_inline_query_current_chat: '/mytasks' },
+              { text: '❓ 查看幫助', callback_data: 'help_assign' }
+            ]
+          ]
+        };
+        
+        await ctx.editMessageText(`📋 您目前沒有任何封存的任務\n\n💡 提示：封存的任務不會出現在任務列表和週報中`, {
+          reply_markup: emptyKeyboard
+        });
+        return;
+      }
+
+      // 每頁顯示5個任務
+      const tasksPerPage = 5;
+      const totalPages = Math.ceil(userArchivedTasks.length / tasksPerPage);
+      const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+      const startIndex = currentPage * tasksPerPage;
+      const endIndex = Math.min(startIndex + tasksPerPage, userArchivedTasks.length);
+      const currentTasks = userArchivedTasks.slice(startIndex, endIndex);
+
+      // 構建任務列表訊息
+      let message = `📋 您封存的任務列表\n\n`;
+      message += `總共 ${userArchivedTasks.length} 個封存任務\n`;
+      message += `\n頁面 ${currentPage + 1}/${totalPages}\n`;
+      message += `點擊下方按鈕查看任務詳情\n\n`;
+
+      // 構建按鈕鍵盤 - 每個任務一行
+      const keyboardRows = [];
+      currentTasks.forEach((task) => {
+        const title = task.title ? task.title.substring(0, 20) : '';
+        const progress = task.progress > 0 ? ` [${task.progress}%]` : '';
+        const buttonText = `${task.ticket_id}${title ? ` - ${title}` : ''}${progress}`;
+        
+        keyboardRows.push([{
+          text: buttonText.length > 64 ? buttonText.substring(0, 61) + '...' : buttonText,
+          callback_data: `task_detail:${task.ticket_id}`
+        }]);
+      });
+
+      // 添加分頁按鈕
+      const paginationButtons = [];
+      if (totalPages > 1) {
+        if (currentPage > 0) {
+          paginationButtons.push({ text: '⬅️ 上一頁', callback_data: `archived_page:${currentPage - 1}` });
+        }
+        if (currentPage < totalPages - 1) {
+          paginationButtons.push({ text: '下一頁 ➡️', callback_data: `archived_page:${currentPage + 1}` });
+        }
+        if (paginationButtons.length > 0) {
+          keyboardRows.push(paginationButtons);
+        }
+      }
+
+      // 添加底部操作按鈕
+      keyboardRows.push([
+        { text: '🔄 重新整理', callback_data: 'refresh_archived' },
+        { text: '📋 我的任務', switch_inline_query_current_chat: '/mytasks' }
+      ]);
+
+      const keyboard = {
+        inline_keyboard: keyboardRows
+      };
+
+      await ctx.editMessageText(message, {
+        reply_markup: keyboard,
+        parse_mode: 'HTML'
+      });
+    } catch (error) {
+      console.error('重新整理封存任務列表時發生錯誤:', error);
+      // 如果是"消息未修改"錯誤，忽略它
+      if (error.response && error.response.description && error.response.description.includes('message is not modified')) {
+        await ctx.answerCbQuery('內容未變更');
+      } else {
+        await ctx.answerCbQuery('重新整理失敗');
+      }
     }
   }
 }

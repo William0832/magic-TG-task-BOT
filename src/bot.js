@@ -9,6 +9,7 @@ import { setupStatusHandler } from './handlers/statusHandler.js';
 import { setupProgressHandler } from './handlers/progressHandler.js';
 import { setupReportHandler } from './handlers/reportHandler.js';
 import { setupMyTasksHandler } from './handlers/myTasksHandler.js';
+import { setupArchivedTasksHandler } from './handlers/archivedTasksHandler.js';
 import { setupMessageHandler } from './handlers/messageHandler.js';
 import { setupChannelHandler } from './handlers/channelHandler.js';
 
@@ -46,13 +47,15 @@ class MissionBot {
     // 設置命令處理器
     setupHelpHandler(this.bot);
     setupAssignHandler(this.bot, this.taskService);
-    setupStatusHandler(this.bot, this.db);
+    setupStatusHandler(this.bot, this.db, this.taskCallbacks);
     setupProgressHandler(this.bot, this.db);
     setupReportHandler(this.bot, this.reportService);
     setupMyTasksHandler(this.bot, this.myTasksService);
     
-    // 設置回調處理器
+    // 設置回調處理器（需要在設置 archived handler 之前）
     this.taskCallbacks.setupCallbacks();
+    
+    setupArchivedTasksHandler(this.bot, this.taskCallbacks);
     
     // 設置訊息處理器
     setupMessageHandler(this.bot, this.taskService, this.assignService);
@@ -71,7 +74,9 @@ class MissionBot {
         { command: 'status', description: '更新任務狀態' },
         { command: 'progress', description: '更新任務進度' },
         { command: 'report', description: '生成本週工作報告' },
-        { command: 'mytasks', description: '查看我的任務列表' }
+        { command: 'mytasks', description: '查看我的任務列表' },
+        { command: 'archived', description: '查看封存的任務' },
+        { command: 'archived', description: '查看封存的任務' }
       ];
       
       try {
@@ -103,7 +108,7 @@ class MissionBot {
       
       await this.bot.launch();
       console.log('✅ Bot 正在運行...');
-      console.log('📋 已註冊的命令: /help, /assign, /status, /progress, /report, /mytasks');
+      console.log('📋 已註冊的命令: /help, /assign, /status, /progress, /report, /mytasks, /archived');
       console.log('💡 提示: 在 Telegram 中發送命令測試，或查看控制台日誌');
       console.log('💡 提示: 任務狀態系統已改為週報狀態（正在進行、下週處理、已上線、封存）');
       console.log('💡 提示: 點擊輸入框旁邊的選單按鈕可查看所有命令');
