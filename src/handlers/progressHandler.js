@@ -1,7 +1,7 @@
 import MessageParser from '../messageParser.js';
 import { logCommandDetails } from '../utils/logger.js';
 
-export function setupProgressHandler(bot, db) {
+export function setupProgressHandler(bot, db, taskCallbacks) {
   bot.command('progress', async (ctx) => {
     const args = ctx.message.text.split(' ').slice(1);
     logCommandDetails('progress', ctx, {
@@ -9,8 +9,9 @@ export function setupProgressHandler(bot, db) {
     });
 
     if (args.length < 2) {
-      console.log('   ❌ 參數不足');
-      return ctx.reply('用法: /progress <任務單號> <百分比數字>');
+      // 如果沒有參數，顯示用戶的任務列表（排除封存）
+      await taskCallbacks.showTaskListForProgress(ctx);
+      return;
     }
 
     const ticketId = MessageParser.extractTicketId(args[0]);

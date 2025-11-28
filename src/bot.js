@@ -21,6 +21,7 @@ import { TaskService } from './services/taskService.js';
 import { ReportService } from './services/reportService.js';
 import { MyTasksService } from './services/myTasksService.js';
 import { AssignService } from './services/assignService.js';
+import { JiraLinkService } from './services/jiraLinkService.js';
 
 class MissionBot {
   constructor(token, db, jiraService) {
@@ -33,9 +34,10 @@ class MissionBot {
     this.reportService = new ReportService(db);
     this.myTasksService = new MyTasksService(db);
     this.assignService = new AssignService(this.taskService);
+    this.jiraLinkService = new JiraLinkService(this.taskService, this.assignService);
     
     // 初始化回調處理器
-    this.taskCallbacks = new TaskCallbacks(db, this.bot, this.taskService, this.assignService);
+    this.taskCallbacks = new TaskCallbacks(db, this.bot, this.taskService, this.assignService, this.jiraLinkService);
     
     this.setupHandlers();
   }
@@ -48,7 +50,7 @@ class MissionBot {
     setupHelpHandler(this.bot);
     setupAssignHandler(this.bot, this.taskService);
     setupStatusHandler(this.bot, this.db, this.taskCallbacks);
-    setupProgressHandler(this.bot, this.db);
+    setupProgressHandler(this.bot, this.db, this.taskCallbacks);
     setupReportHandler(this.bot, this.reportService);
     setupMyTasksHandler(this.bot, this.myTasksService);
     
@@ -58,7 +60,7 @@ class MissionBot {
     setupArchivedTasksHandler(this.bot, this.taskCallbacks);
     
     // 設置訊息處理器
-    setupMessageHandler(this.bot, this.taskService, this.assignService);
+    setupMessageHandler(this.bot, this.taskService, this.assignService, this.jiraLinkService);
     
     // 設置頻道處理器
     setupChannelHandler(this.bot, this.reportService);
