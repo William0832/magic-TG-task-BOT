@@ -46,26 +46,52 @@ export class TaskService {
         jiraUrl
       });
 
-      const message = `📋 新任務分配\n\n` +
-        `工作單號: ${ticketId}\n` +
-        (finalTitle ? `標題: ${finalTitle}\n` : '') +
-        `連結: ${jiraUrl}\n\n` +
-        `請確認是否受理此任務？`;
+      // 檢查是否是本人指派給自己
+      const isSelfAssignment = 
+        (assigneeUserId && assigneeUserId === ctx.from.id) ||
+        assigneeUsername === ctx.from.username ||
+        assigneeUsername === ctx.from.first_name ||
+        assigneeUsername === `user_${ctx.from.id}`;
 
-      const keyboard = {
-        inline_keyboard: [
-          [
-            { text: '✅ 受理', callback_data: `accept:${ticketId}` },
-            { text: '❌ 拒絕', callback_data: `reject:${ticketId}` }
-          ]
-        ]
-      };
-
-      if (assigneeUserId) {
-        await ctx.telegram.sendMessage(assigneeUserId, message, { reply_markup: keyboard });
-        await ctx.reply(`✅ 任務 ${ticketId} 已分配給 @${assigneeUsername}，等待確認中...`);
+      if (isSelfAssignment) {
+        // 本人指派給自己，直接通知成功並自動受理
+        console.log('   ℹ️ 本人指派給自己，自動受理');
+        
+        // 確保任務狀態為"正在進行"
+        await this.db.updateReportStatus(ticketId, '正在進行');
+        
+        const successMessage = `✅ 任務已成功創建並受理\n\n` +
+          `工作單號: ${ticketId}\n` +
+          (finalTitle ? `標題: ${finalTitle}\n` : '') +
+          `狀態: 正在進行\n` +
+          `負責人: @${assigneeUsername}\n` +
+          `連結: ${jiraUrl}\n\n` +
+          `任務已確認受理，可以開始處理。`;
+        
+        await ctx.reply(successMessage);
       } else {
-        await ctx.reply(message, { reply_markup: keyboard });
+        // 指派給其他人，需要確認
+        const message = `📋 新任務分配\n\n` +
+          `工作單號: ${ticketId}\n` +
+          (finalTitle ? `標題: ${finalTitle}\n` : '') +
+          `連結: ${jiraUrl}\n\n` +
+          `請確認是否受理此任務？`;
+
+        const keyboard = {
+          inline_keyboard: [
+            [
+              { text: '✅ 受理', callback_data: `accept:${ticketId}` },
+              { text: '❌ 拒絕', callback_data: `reject:${ticketId}` }
+            ]
+          ]
+        };
+
+        if (assigneeUserId) {
+          await ctx.telegram.sendMessage(assigneeUserId, message, { reply_markup: keyboard });
+          await ctx.reply(`✅ 任務 ${ticketId} 已分配給 @${assigneeUsername}，等待確認中...`);
+        } else {
+          await ctx.reply(message, { reply_markup: keyboard });
+        }
       }
     } catch (error) {
       console.error('創建任務時發生錯誤:', error);
@@ -103,16 +129,38 @@ export class TaskService {
     // 查找負責人用戶 ID（如果在群組中，嘗試從聊天中獲取）
     let assigneeUserId = null;
     if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
-      console.log(`   🔍 嘗試在群組中查找用戶 @${assigneeUsername}...`);
-      try {
-        const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, `@${assigneeUsername}`);
-        assigneeUserId = chatMember.user.id;
-        console.log(`   ✅ 找到用戶 ID: ${assigneeUserId}`);
-      } catch (error) {
-        console.log(`   ⚠️ 無法在群組中找到用戶 @${assigneeUsername}:`, error.message);
+      // 如果 assigneeUsername 是 user_${id} 格式，直接提取 ID
+      const userIdMatch = assigneeUsername.match(/^user_(\d+)$/);
+      if (userIdMatch) {
+        assigneeUserId = parseInt(userIdMatch[1]);
+        console.log(`   ✅ 從 username 格式中提取用戶 ID: ${assigneeUserId}`);
+      } else {
+        console.log(`   🔍 嘗試在群組中查找用戶 @${assigneeUsername}...`);
+        try {
+          const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, `@${assigneeUsername}`);
+          assigneeUserId = chatMember.user.id;
+          console.log(`   ✅ 找到用戶 ID: ${assigneeUserId}`);
+        } catch (error) {
+          console.log(`   ⚠️ 無法在群組中找到用戶 @${assigneeUsername}:`, error.message);
+          // 如果找不到用戶，但 assigneeUsername 匹配當前用戶，使用當前用戶 ID
+          if (assigneeUsername === ctx.from.username || assigneeUsername === ctx.from.first_name) {
+            assigneeUserId = ctx.from.id;
+            console.log(`   ✅ 使用當前用戶 ID: ${assigneeUserId}`);
+          }
+        }
       }
     } else {
-      console.log('   ℹ️ 不在群組中，跳過用戶 ID 查找');
+      // 私聊中，如果 assigneeUsername 是 user_${id} 格式，直接提取 ID
+      const userIdMatch = assigneeUsername.match(/^user_(\d+)$/);
+      if (userIdMatch) {
+        assigneeUserId = parseInt(userIdMatch[1]);
+        console.log(`   ✅ 從 username 格式中提取用戶 ID: ${assigneeUserId}`);
+      } else if (assigneeUsername === ctx.from.username || assigneeUsername === ctx.from.first_name) {
+        // 如果匹配當前用戶，使用當前用戶 ID
+        assigneeUserId = ctx.from.id;
+        console.log(`   ✅ 使用當前用戶 ID: ${assigneeUserId}`);
+      }
+      console.log('   ℹ️ 不在群組中，使用當前用戶 ID 或跳過');
     }
 
     try {
@@ -126,31 +174,58 @@ export class TaskService {
       });
       console.log(`   ✅ 任務已保存，資料庫 ID: ${taskId}`);
 
-      const message = `📋 新任務分配\n\n` +
-        `工作單號: ${ticketId}\n` +
-        (finalTitle ? `標題: ${finalTitle}\n` : '') +
-        `連結: ${jiraUrl}\n\n` +
-        `請確認是否受理此任務？`;
+      // 檢查是否是本人指派給自己
+      const isSelfAssignment = 
+        (assigneeUserId && assigneeUserId === ctx.from.id) ||
+        assigneeUsername === ctx.from.username ||
+        assigneeUsername === ctx.from.first_name ||
+        assigneeUsername === `user_${ctx.from.id}`;
 
-      const keyboard = {
-        inline_keyboard: [
-          [
-            { text: '✅ 受理', callback_data: `accept:${ticketId}` },
-            { text: '❌ 拒絕', callback_data: `reject:${ticketId}` }
-          ]
-        ]
-      };
-
-      if (assigneeUserId && ctx.telegram) {
-        console.log(`   📤 發送確認訊息給用戶 ${assigneeUserId}...`);
-        await ctx.telegram.sendMessage(assigneeUserId, message, { reply_markup: keyboard });
-        console.log('   ✅ 確認訊息已發送');
-        await ctx.reply(`✅ 任務 ${ticketId} 已分配給 @${assigneeUsername}，等待確認中...`);
+      if (isSelfAssignment) {
+        // 本人指派給自己，直接通知成功並自動受理
+        console.log('   ℹ️ 本人指派給自己，自動受理');
+        
+        // 確保任務狀態為"正在進行"
+        await this.db.updateReportStatus(ticketId, '正在進行');
+        
+        const successMessage = `✅ 任務已成功創建並受理\n\n` +
+          `工作單號: ${ticketId}\n` +
+          (finalTitle ? `標題: ${finalTitle}\n` : '') +
+          `狀態: 正在進行\n` +
+          `負責人: @${assigneeUsername}\n` +
+          `連結: ${jiraUrl}\n\n` +
+          `任務已確認受理，可以開始處理。`;
+        
+        await ctx.reply(successMessage);
+        console.log('✅ 任務創建流程完成（自動受理）');
       } else {
-        console.log('   📤 在群組中發送確認訊息...');
-        await ctx.reply(message, { reply_markup: keyboard });
+        // 指派給其他人，需要確認
+        const message = `📋 新任務分配\n\n` +
+          `工作單號: ${ticketId}\n` +
+          (finalTitle ? `標題: ${finalTitle}\n` : '') +
+          `連結: ${jiraUrl}\n\n` +
+          `請確認是否受理此任務？`;
+
+        const keyboard = {
+          inline_keyboard: [
+            [
+              { text: '✅ 受理', callback_data: `accept:${ticketId}` },
+              { text: '❌ 拒絕', callback_data: `reject:${ticketId}` }
+            ]
+          ]
+        };
+
+        if (assigneeUserId && ctx.telegram) {
+          console.log(`   📤 發送確認訊息給用戶 ${assigneeUserId}...`);
+          await ctx.telegram.sendMessage(assigneeUserId, message, { reply_markup: keyboard });
+          console.log('   ✅ 確認訊息已發送');
+          await ctx.reply(`✅ 任務 ${ticketId} 已分配給 @${assigneeUsername}，等待確認中...`);
+        } else {
+          console.log('   📤 在群組中發送確認訊息...');
+          await ctx.reply(message, { reply_markup: keyboard });
+        }
+        console.log('✅ 任務創建流程完成（等待確認）');
       }
-      console.log('✅ 任務創建流程完成');
     } catch (error) {
       console.error('❌ 創建任務失敗:', error);
       await ctx.reply(`❌ 創建任務失敗: ${error.message}`);

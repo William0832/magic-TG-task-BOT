@@ -1,11 +1,20 @@
 class MessageParser {
   static parseJiraMessage(text) {
+    console.log('🔍 [DEBUG] parseJiraMessage 開始解析:', text);
+    
     // Pattern to match Jira URL: https://jira.dsteam.vip/browse/xxxx
     // Supports both http and https, case-insensitive
     const jiraUrlPattern = /https?:\/\/jira\.dsteam\.vip\/browse\/([A-Z]+-\d+)/gi;
     const urlMatches = [...text.matchAll(jiraUrlPattern)];
 
+    console.log('🔍 [DEBUG] URL 匹配結果:', {
+      pattern: jiraUrlPattern.toString(),
+      matches: urlMatches,
+      matchCount: urlMatches.length
+    });
+
     if (!urlMatches || urlMatches.length === 0) {
+      console.log('❌ [DEBUG] 沒有找到 Jira URL 匹配');
       return null;
     }
 

@@ -40,12 +40,13 @@ export function setupAssignHandler(bot, taskService) {
     let assigneeUsername = null;
     let title = null;
 
-    // 檢查第一個參數是否是 @username
+    // 檢查第一個參數是否是 @username（必須以 @ 開頭）
     const firstArgIsUsername = args[0] && args[0].startsWith('@');
     
     if (firstArgIsUsername) {
       // 格式2: /assign @username PROJ-1234 [標題]
-      const assigneeMatch = args[0].match(/@?(\w+)/);
+      // 只匹配以 @ 開頭的用戶名
+      const assigneeMatch = args[0].match(/^@(\w+)$/);
       if (assigneeMatch) {
         assigneeUsername = assigneeMatch[1];
       }
@@ -54,9 +55,12 @@ export function setupAssignHandler(bot, taskService) {
     } else {
       // 格式1: /assign PROJ-1234 @username [標題]
       ticketId = MessageParser.extractTicketId(args[0]);
-      const assigneeMatch = args[1].match(/@?(\w+)/);
-      if (assigneeMatch) {
-        assigneeUsername = assigneeMatch[1];
+      // 只匹配以 @ 開頭的用戶名
+      if (args[1] && args[1].startsWith('@')) {
+        const assigneeMatch = args[1].match(/^@(\w+)$/);
+        if (assigneeMatch) {
+          assigneeUsername = assigneeMatch[1];
+        }
       }
       title = args.slice(2).join(' ') || null;
     }
@@ -67,9 +71,10 @@ export function setupAssignHandler(bot, taskService) {
       return ctx.reply('❌ 無效的工作單號格式\n\n💡 提示：工作單號格式應為 PROJ-1234');
     }
 
+    // 如果沒有指定用戶，預設指派給本人
     if (!assigneeUsername) {
-      console.log('   ❌ 無效的用戶名格式');
-      return ctx.reply('❌ 無效的用戶名格式\n\n💡 提示：請使用 @username 格式');
+      assigneeUsername = ctx.from.username || ctx.from.first_name || `user_${ctx.from.id}`;
+      console.log('   ℹ️ 未指定用戶，預設指派給本人:', assigneeUsername);
     }
 
     const jiraUrl = `https://jira.dsteam.vip/browse/${ticketId}`;

@@ -10,15 +10,23 @@ export class JiraLinkService {
   // 設置 Jira 連結狀態
   setJiraLinkState(userId, chatId, ticketId, jiraUrl) {
     const key = `${userId}_${chatId}`;
-    jiraLinkStates.set(key, {
+    const state = {
       ticketId,
       jiraUrl,
       timestamp: Date.now()
+    };
+    jiraLinkStates.set(key, state);
+    
+    console.log('🔗 [DEBUG] 設置 Jira 連結狀態:', {
+      key,
+      state,
+      totalStates: jiraLinkStates.size
     });
     
     // 5分鐘後自動清除
     setTimeout(() => {
       jiraLinkStates.delete(key);
+      console.log('🔗 [DEBUG] 自動清除過期狀態:', key);
     }, 5 * 60 * 1000);
   }
 
@@ -40,11 +48,21 @@ export class JiraLinkService {
     const chatId = ctx.chat.id;
     const state = this.getJiraLinkState(userId, chatId);
     
+    console.log('🔍 [DEBUG] handleTitleInput 檢查狀態:', {
+      userId,
+      chatId,
+      state,
+      text,
+      hasState: !!state
+    });
+    
     if (!state) {
+      console.log('⚠️ [DEBUG] 沒有待處理的 Jira 連結狀態');
       return false; // 沒有待處理的 Jira 連結
     }
 
     const title = text.trim() || null;
+    console.log('✅ [DEBUG] 處理任務名稱輸入:', { ticketId: state.ticketId, title });
     
     // 清除狀態
     this.clearJiraLinkState(userId, chatId);
@@ -58,6 +76,7 @@ export class JiraLinkService {
       jiraUrl: state.jiraUrl
     });
 
+    console.log('✅ [DEBUG] 任務已創建');
     return true; // 已處理
   }
 
@@ -122,11 +141,28 @@ export class JiraLinkService {
     const jiraState = this.getJiraLinkState(userId, chatId);
     const assignState = this.getAssignOtherState(userId, chatId);
     
+    console.log('🔍 [DEBUG] handleAssignOtherTitleInput 檢查狀態:', {
+      userId,
+      chatId,
+      jiraState,
+      assignState,
+      text,
+      hasJiraState: !!jiraState,
+      hasAssignState: !!assignState
+    });
+    
     if (!jiraState || !assignState) {
+      console.log('⚠️ [DEBUG] 缺少必要的狀態:', { hasJiraState: !!jiraState, hasAssignState: !!assignState });
       return false; // 沒有待處理的狀態
     }
 
     const title = text.trim() || null;
+    console.log('✅ [DEBUG] 處理指派給其他人的任務名稱輸入:', {
+      ticketId: jiraState.ticketId,
+      title,
+      assigneeUsername: assignState.assigneeUsername,
+      assigneeUserId: assignState.assigneeUserId
+    });
     
     // 清除所有狀態
     this.clearJiraLinkState(userId, chatId);
@@ -141,6 +177,7 @@ export class JiraLinkService {
       jiraUrl: jiraState.jiraUrl
     });
 
+    console.log('✅ [DEBUG] 任務已創建（指派給其他人）');
     return true; // 已處理
   }
 }
