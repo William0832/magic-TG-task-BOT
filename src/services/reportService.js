@@ -8,13 +8,13 @@ export class ReportService {
       const now = new Date();
       const dayOfWeek = now.getDay(); // 0 = 星期日, 1 = 星期一, 以此類推
       
-      // 計算週開始（星期一）和結束（星期日）
+      // 計算週開始（星期一）和結束（星期五）
       const weekStart = new Date(now);
       weekStart.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); // 星期一
       weekStart.setHours(0, 0, 0, 0);
       
       const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6); // 星期日
+      weekEnd.setDate(weekStart.getDate() + 4); // 星期五（星期一 + 4天 = 星期五）
       weekEnd.setHours(23, 59, 59, 999);
 
       const formatDate = (date) => {
